@@ -1,0 +1,11 @@
+# FastAPI core web framework and high-performance server
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+
+# Official InfluxDB v2 Client for Flux queries
+influxdb-client>=1.41.0
+
+# Data validation, schemas and environment configuration
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+python-dotenv>=1.0.1
