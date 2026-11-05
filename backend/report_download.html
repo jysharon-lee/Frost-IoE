@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FROST-IoE reports</title><style>
+*{box-sizing:border-box}body{font-family:Arial,sans-serif;color:#243746;background:#f3f6f8;margin:0;padding:32px 16px}
+main{max-width:740px;margin:auto;background:white;padding:32px;border:1px solid #d9e2e8;border-radius:10px}
+h1{color:#153e52;margin:8px 0 16px}p{line-height:1.6}label{display:block;font-weight:600;margin-bottom:7px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:24px 0}input{width:100%;font:inherit;padding:11px;border:1px solid #8b9ca7;border-radius:4px}
+button{font:inherit;font-weight:600;padding:12px 18px;background:#153e52;color:white;border:0;border-radius:4px;cursor:pointer}
+button.secondary{background:#e8f0f4;color:#153e52}button:disabled{opacity:.6}#message{white-space:pre-wrap}small{display:block;margin-top:6px;line-height:1.5;color:#526471}
+@media(max-width:550px){.grid{grid-template-columns:1fr}main{padding:20px}}
+</style></head><body><main>
+<small>FROST-IoE</small><h1>Download a temperature report</h1>
+<p>Keep a dated record for later audit checks. PDF gives a printable summary. Excel includes readings, events and a review log.</p>
+<form id="report"><div class="grid">
+<div><label for="facility">Facility name</label><input id="facility" name="facility" maxlength="200" placeholder="e.g. Pilot facility"></div>
+<div><label for="zone">Zone ID</label><input id="zone" name="zone_id" required maxlength="128" pattern="[A-Za-z0-9_.:\-]+" placeholder="e.g. zone_a"><small>Use the exact zone ID from your monitoring system.</small></div>
+<div><label for="start">From (Malaysia time)</label><input id="start" type="datetime-local" required step="1"></div>
+<div><label for="end">Until (Malaysia time)</label><input id="end" type="datetime-local" required step="1"></div>
+<div><label for="limit">Upper temperature limit (°C)</label><input id="limit" type="number" value="-18" min="-100" max="100" step="any" required><small>Choose the limit appropriate for this room.</small></div>
+</div>
+<p><small>Times use MYT (UTC+8). The start is included and the end is excluded. Maximum period: 31 days. A future end produces a partial report with readings available so far. A future start is not supported.</small></p>
+<button type="submit" name="format" value="pdf">Download PDF</button>
+<button class="secondary" type="submit" name="format" value="excel">Download Excel</button>
+<p id="message" role="status" aria-live="polite"></p></form>
+<p><small>Exports are protected snapshots. Export again when more readings arrive. Demonstration data is labelled in each report. Keep audit review notes in a separate log. Protection discourages edits but cannot prevent file duplication or deliberate changes.</small></p>
+</main><script>
+const form=document.getElementById('report'), message=document.getElementById('message');
+const mytNow=new Date(Date.now()+8*3600000).toISOString().slice(0,19);
+document.getElementById('end').value=mytNow;
+document.getElementById('start').value=mytNow.slice(0,10)+'T00:00:00';
+form.addEventListener('submit',async event=>{
+ event.preventDefault();
+ const start=document.getElementById('start').value, end=document.getElementById('end').value;
+ const startISO=start+'+08:00',endISO=end+'+08:00';
+ const span=new Date(endISO)-new Date(startISO);
+ if(span<=0||span>31*86400000){message.textContent='Choose an end after the start, no more than 31 days apart.';return;}
+ if(new Date(startISO)>=new Date()){message.textContent='Choose a start time in the past.';return;}
+ const format=event.submitter.value;
+ const params=new URLSearchParams({start:startISO,end:endISO,zone_id:form.elements.zone_id.value,
+ facility:form.elements.facility.value||'Not specified',limit_c:document.getElementById('limit').value});
+ const buttons=[...form.querySelectorAll('button')]; buttons.forEach(button=>button.disabled=true);
+ message.textContent='Preparing your report…';
+ try{
+  const response=await fetch('/api/reports/export-'+format+'?'+params);
+  if(!response.ok){const body=await response.json();throw new Error(typeof body.detail==='string'?body.detail:'Check the selected dates, zone ID and temperature limit.');}
+  const blob=await response.blob(),url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download=format==='pdf'?'frost-ioe-report.pdf':'frost-ioe-audit.xlsx';link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);message.textContent='Downloaded. Open the file from your browser’s Downloads list.';
+ }catch(error){message.textContent=error.message;}finally{buttons.forEach(button=>button.disabled=false);}
+});
+</script></body></html>

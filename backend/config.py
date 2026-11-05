@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     INFLUX_BUCKET: str = "FROST-IoE"
     INFLUX_TOKEN: str = ""
 
+    # Per-sensor commissioning offsets in Celsius, keyed by sensor_id/node_id.
+    SENSOR_BASELINE_OFFSETS: dict[str, float] = {}
+
     USE_MOCK_DATA: bool = True
 
     # Statutory Food Hygiene Thresholds 

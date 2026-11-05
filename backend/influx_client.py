@@ -1,4 +1,7 @@
 import random
+import json
+import math
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from influxdb_client import InfluxDBClient
@@ -124,6 +127,52 @@ class InfluxService:
                 )
 
         return points
+
+    def get_raw_readings(self, zone_id: str, start: datetime, end: datetime) -> List[dict]:
+        """Unrounded observations in [start, end), preserving individual sensor tags.
+
+        Unlike chart data these must not use aggregateWindow: averaging hides faults.
+        Bound the query globally and fail rather than silently truncate an audit report.
+        """
+        if not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", zone_id):
+            raise ValueError("Invalid zone identifier")
+        max_records = 50_000
+        if settings.USE_MOCK_DATA:
+            rows = []
+            stamp = start
+            base = -19.2 if zone_id == "zone_a" else 2.0
+            while stamp < end:
+                if len(rows) >= max_records:
+                    raise ValueError("Reading limit exceeded")
+                rows.append({"timestamp": stamp, "temp_c": base + 0.2 * math.sin(len(rows)/7),
+                             "humidity": 80.0, "source": "MOCK"})
+                stamp += timedelta(minutes=1)
+            return rows
+        query = f'''from(bucket: {json.dumps(settings.INFLUX_BUCKET)})
+          |> range(start: time(v: {json.dumps(start.isoformat())}), stop: time(v: {json.dumps(end.isoformat())}))
+          |> filter(fn: (r) => r["_measurement"] == "zone_environment" and r["zone_id"] == {json.dumps(zone_id)})
+          |> filter(fn: (r) => r["_field"] == "temp_c")
+          |> group(columns: [])
+          |> sort(columns: ["_time"])
+          |> limit(n: {max_records + 1})'''
+        tables = self.get_query_api().query(query, org=settings.clean_org)
+        rows = []
+        record_count = 0
+        for table in tables:
+            for record in table.records:
+                record_count += 1
+                if record_count > max_records:
+                    raise ValueError("Reading limit exceeded")
+                value = record.get_value()
+                if value is None or not math.isfinite(float(value)):
+                    continue
+                rows.append({"timestamp": record.get_time(), "temp_c": float(value),
+                             "sensor_id": record.values.get("sensor_id"),
+                             "node_id": record.values.get("node_id"),
+                             "source": record.values.get("source", "unknown")})
+                if len(rows) > max_records:
+                    raise ValueError("Reading limit exceeded")
+        return rows
 
     # Safe Mock Generators for Offline Testing 
     def _generate_mock_live(self) -> List[LiveZoneReading]:

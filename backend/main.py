@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from influx_client import influx_service
-from routers import zones
+from routers import zones, forecast, health, report
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,6 +31,9 @@ app.add_middleware(
 
 # Register Core Endpoints
 app.include_router(zones.router)
+app.include_router(forecast.router)
+app.include_router(health.router)
+app.include_router(report.router)
 
 @app.get("/", tags=["Health"])
 def root():
