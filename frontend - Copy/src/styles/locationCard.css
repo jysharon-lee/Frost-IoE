@@ -1,0 +1,233 @@
+/* Location card */
+.location-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.location-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+button.location-card {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: white;
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
+}
+
+button.location-card:hover {
+  border-color: #078c95;
+  box-shadow: 0 4px 14px #078c9515;
+}
+
+button.location-card:focus-visible {
+  outline: 3px solid #078c95;
+  outline-offset: 3px;
+}
+
+/* Map preview card */
+button.location-preview-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+  text-align: left;
+}
+
+.location-preview-card .location-card-heading {
+  justify-content: flex-start;
+  gap: 8px;
+  color: #172b4d;
+  font-size: 1.05rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.location-preview-card .location-card-heading svg {
+  flex-shrink: 0;
+  color: #078c95;
+}
+
+.location-preview-area {
+  display: block;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: auto;
+}
+
+/* Miniature room */
+.location-mini-room {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  box-sizing: border-box;
+  border: 2px solid #64748b;
+  border-radius: 5px;
+  background:
+    linear-gradient(#e8eef5 1px, transparent 1px),
+    linear-gradient(90deg, #e8eef5 1px, transparent 1px),
+    #f8fafc;
+  background-size: 16px 16px;
+}
+
+.location-mini-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 60%;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: #ffffffeb;
+  color: #475569;
+  font-size: 10px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.location-mini-marker {
+  position: absolute;
+  z-index: 1;
+  width: 11px;
+  height: 11px;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  border: 2px solid white;
+  border-radius: 50%;
+  background: #078c95;
+  box-shadow: 0 0 0 1px #078c95;
+}
+
+.location-mini-marker.selected {
+  width: 14px;
+  height: 14px;
+  background: #2563eb;
+  box-shadow: 0 0 0 3px #2563eb30;
+}
+
+.location-mini-marker.faded {
+  opacity: 0.3;
+}
+
+.location-mini-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  font-size: 10px;
+  text-align: center;
+}
+
+/* Location dialog */
+.location-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(850px, 94vw);
+  max-height: 90dvh;
+  box-sizing: border-box;
+  margin: auto;
+  padding: 24px;
+  border: 0;
+  border-radius: 16px;
+  background: #f5f8fc;
+  color: #172b4d;
+  overflow: auto;
+  box-shadow: 0 20px 60px #0f172a55;
+}
+
+.location-dialog::backdrop {
+  background: #0f172a99;
+}
+
+.location-dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.location-dialog .location-dialog-header {
+  margin-bottom: 4px;
+}
+
+.location-dialog-header h2 {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.4;
+}
+
+.location-dialog-hint {
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.location-dialog .location-dialog-hint {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.location-dialog .zone-layout {
+  margin-bottom: 0;
+}
+
+/* Dialog close button */
+.location-dialog .location-dialog-header > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 36px;
+  width: 36px;
+  min-width: 36px;
+  max-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  margin: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: white;
+  color: #475569;
+  cursor: pointer;
+}
+
+.location-dialog .location-dialog-header > button:hover {
+  background: #eef2f6;
+  color: #172b4d;
+}
+
+.location-dialog .location-dialog-header > button:focus-visible {
+  outline: 3px solid #078c95;
+  outline-offset: 3px;
+}
+
+/* Mobile layout */
+@media (max-width: 600px) {
+  .location-dialog {
+    width: 96vw;
+    max-height: 94dvh;
+    padding: 14px;
+  }
+}

@@ -1,0 +1,123 @@
+/* Chart container */
+.zone-history-charts {
+  min-width: 0;
+}
+
+/* History period selector */
+.history-range-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.history-range-toolbar label {
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.history-range-toolbar select {
+  padding: 9px 12px;
+  border: 1px solid #d5dfeb;
+  border-radius: 8px;
+  background: white;
+  color: #172b4d;
+  font: inherit;
+}
+
+/* Chart card and heading */
+.history-switch-panel {
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.history-switch-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.history-switch-heading h3 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: #172b4d;
+  font-size: 1.05rem;
+}
+
+.history-switch-heading h3 svg {
+  flex-shrink: 0;
+  color: #078c95;
+}
+
+/* Zone average and node comparison switch */
+.history-view-switch {
+  display: inline-flex;
+  padding: 3px;
+  border: 1px solid #d5dfeb;
+  border-radius: 9px;
+  background: #f8fafc;
+}
+
+.history-view-switch button {
+  padding: 7px 11px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #475569;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.history-view-switch button.active {
+  background: #078c95;
+  color: white;
+}
+
+.history-view-switch button:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+/* Remove the nested HistoryChart card and duplicate heading */
+.history-switch-chart > .panel {
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.history-switch-chart > .panel > .panel-heading {
+  display: none;
+}
+
+/* Chart dimensions */
+.history-switch-chart .chart {
+  width: 100%;
+  height: 250px;
+}
+
+/* Mobile layout */
+@media (max-width: 600px) {
+  .history-switch-panel {
+    padding: 14px;
+  }
+
+  .history-switch-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .history-switch-chart .chart {
+    height: 230px;
+  }
+}

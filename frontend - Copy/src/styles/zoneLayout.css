@@ -1,0 +1,627 @@
+/* Zone layout and heading */
+.zone-layout {
+  margin-bottom: 24px;
+}
+
+.zone-layout > .panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.zone-layout > .panel-heading h3 {
+  flex: 1;
+  margin: 0;
+}
+
+/* Room canvas */
+.layout-room {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 20px 0;
+  border: 3px solid #334155;
+  border-radius: 8px;
+  isolation: isolate;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 29px,
+      #edf2f7 30px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      #fafcfe,
+      #fafcfe 29px,
+      #edf2f7 30px
+    );
+}
+
+.layout-room.editing {
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.zone-layout .layout-room {
+  container-type: inline-size;
+}
+
+.zone-layout .layout-room.editing {
+  cursor: default;
+}
+
+.layout-empty {
+  position: absolute;
+  inset: 30% 10%;
+  display: grid;
+  place-content: center;
+  color: #64748b;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Room labels */
+.room-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 42%;
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: white;
+  color: #334155;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+}
+
+.room-label.active {
+  outline: 2px solid #078c95;
+}
+
+.zone-layout .layout-room > .room-label {
+  z-index: 2;
+  width: max-content;
+  max-width: 70%;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  line-height: 1.3;
+  user-select: none;
+  pointer-events: none;
+}
+
+.zone-layout .layout-room > .room-label.editable {
+  touch-action: none;
+  cursor: move;
+  pointer-events: auto;
+}
+
+.zone-layout .layout-room > .room-label.active {
+  z-index: 4;
+  outline: 2px solid #078c95;
+}
+
+/* Label resize and rotation handles */
+.zone-layout .room-label > button.label-handle {
+  position: absolute;
+  z-index: 5;
+  display: block;
+  flex: none;
+  width: 14px;
+  min-width: 14px;
+  max-width: 14px;
+  height: 14px;
+  min-height: 14px;
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+  border: 2px solid #078c95;
+  border-radius: 3px;
+  background: white;
+  transform: translate(-50%, -50%);
+  touch-action: none;
+}
+
+.zone-layout .room-label > button.label-rotate {
+  left: 50%;
+  top: -28px;
+  border-radius: 50%;
+  background: #078c95;
+  cursor: grab;
+}
+
+.zone-layout .label-rotation-stem {
+  position: absolute;
+  left: 50%;
+  top: -28px;
+  width: 1px;
+  height: 28px;
+  background: #078c95;
+  pointer-events: none;
+}
+
+.zone-layout .label-resize.nw {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+.zone-layout .label-resize.ne {
+  left: 100%;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.zone-layout .label-resize.sw {
+  left: 0;
+  top: 100%;
+  cursor: nesw-resize;
+}
+
+.zone-layout .label-resize.se {
+  left: 100%;
+  top: 100%;
+  cursor: nwse-resize;
+}
+
+.zone-layout .room-label:focus-visible,
+.zone-layout .label-handle:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+
+/* Sensor markers */
+.layout-room .layout-marker {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 28px;
+  max-width: 40%;
+  padding: 4px 6px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+  background: white;
+  color: #64748b;
+  transform: translate(-50%, -50%);
+}
+
+.layout-room .layout-marker.normal {
+  color: #087f5b;
+}
+
+.layout-room .layout-marker.breach {
+  color: #c92a2a;
+}
+
+.layout-marker.faded {
+  opacity: 0.45;
+}
+
+.layout-marker small {
+  color: inherit;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.layout-marker:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.zone-layout .layout-room > button.layout-marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: max-content;
+  min-width: 0;
+  max-width: 160px;
+  min-height: 0;
+  padding: 7px 10px;
+  margin: 0;
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.zone-layout .layout-room > button.layout-marker small {
+  font-size: inherit;
+}
+
+/* Editing controls */
+.layout-controls {
+  padding: 16px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.layout-controls label {
+  display: block;
+  font-size: 0.85rem;
+}
+
+.layout-controls input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px;
+  margin: 6px 0 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.layout-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.layout-actions button[aria-pressed="true"] {
+  outline: 2px solid #078c95;
+}
+
+.layout-legend {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+/* Edit button */
+.zone-layout .panel-heading > button.layout-edit-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  min-height: 36px;
+  padding: 8px 14px;
+  margin: 0;
+  border: 1px solid #078c95;
+  border-radius: 8px;
+  background: #078c95;
+  color: white;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.zone-layout .panel-heading > button.layout-edit-button:hover {
+  border-color: #067780;
+  background: #067780;
+}
+
+/* Add room label */
+.zone-layout .layout-label-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0 12px;
+}
+
+.zone-layout .layout-label-toolbar strong {
+  color: #172b4d;
+  font-size: 0.9rem;
+}
+
+.zone-layout .layout-controls button.layout-add-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  padding: 9px 14px;
+  margin: 0;
+  border: 1px solid #078c95;
+  border-radius: 8px;
+  background: #078c95;
+  color: white;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zone-layout .layout-controls button.layout-add-label:hover {
+  background: #067780;
+}
+
+/* Existing room labels: three per row */
+.zone-layout .layout-label-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.zone-layout .layout-label-grid > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 12px;
+  margin: 0;
+  border: 1px solid #d5dfeb;
+  border-radius: 8px;
+  background: white;
+  color: #475569;
+  font: inherit;
+  font-size: 0.85rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.zone-layout .layout-label-grid > button[aria-pressed="true"] {
+  border-color: #078c95;
+  background: #e8f7f7;
+  color: #066b73;
+  font-weight: 600;
+}
+
+/* Text size and rotation controls */
+.zone-layout .layout-label-properties {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.zone-layout .layout-label-properties > label {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.zone-layout .layout-label-properties input {
+  height: 36px;
+  margin: 4px 0 0;
+}
+
+.zone-layout .layout-label-properties > label > input {
+  width: 75px;
+  height: 36px;
+  margin: 0;
+}
+
+.zone-layout .layout-label-properties > button.layout-delete-label {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 12px;
+  margin: 0 0 0 auto;
+  border: 1px solid #e5b7bd;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #b42338;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.zone-layout .layout-label-properties > button.layout-delete-label:hover {
+  background: #ffe8eb;
+}
+
+/* Location input and inline remove button */
+.zone-layout .layout-location-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.zone-layout .layout-location-row > label {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.zone-layout .layout-location-row input {
+  height: 40px;
+  margin: 4px 0 0;
+}
+
+.zone-layout .layout-location-row > button.layout-remove-button {
+  flex: 0 0 auto;
+  width: auto;
+  height: 40px;
+  padding: 0 12px;
+  margin: 0;
+  border: 1px solid #e5b7bd;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #b42338;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.zone-layout .layout-location-row > button.layout-remove-button:hover {
+  background: #ffe8eb;
+}
+
+/* Standalone remove button */
+.zone-layout .layout-controls > button.layout-remove-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 12px;
+  margin: 0 0 0 auto;
+  border: 1px solid #e5b7bd;
+  border-radius: 8px;
+  background: #fff5f5;
+  color: #b42338;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zone-layout .layout-controls > button.layout-remove-button:hover {
+  background: #ffe8eb;
+}
+
+.zone-layout .layout-remove-button:focus-visible {
+  outline: 3px solid #078c95;
+  outline-offset: 3px;
+}
+
+/* Save and cancel buttons */
+.zone-layout .layout-save-actions {
+  display: flex;
+  flex-direction: row;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.zone-layout .layout-save-actions > button {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  padding: 9px 16px;
+  margin: 0;
+}
+
+/* Nodes without a location */
+.zone-layout .layout-unplaced {
+  padding: 14px;
+  margin-top: 16px;
+  border: 1px solid #f0cf88;
+  border-radius: 10px;
+  background: #fff9eb;
+}
+
+.zone-layout .layout-unplaced > strong {
+  color: #854d0e;
+  font-size: 0.9rem;
+}
+
+.zone-layout .layout-unplaced > p {
+  margin: 4px 0 12px;
+  color: #785b2a;
+  font-size: 0.8rem;
+}
+
+.zone-layout .layout-unplaced-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.zone-layout .layout-unplaced-actions > button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  padding: 9px 12px;
+  margin: 0;
+  border: 1px solid #d6b469;
+  border-radius: 8px;
+  background: white;
+  color: #714b0f;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.zone-layout .layout-unplaced-actions > button span {
+  font-size: 0.75rem;
+  font-weight: 400;
+}
+
+.zone-layout .layout-unplaced-actions > button:hover {
+  border-color: #a16207;
+  background: #fff3d6;
+}
+
+.zone-layout .layout-unplaced-actions > button:focus-visible {
+  outline: 3px solid #a16207;
+  outline-offset: 3px;
+}
+
+/* Compact popup spacing */
+.location-dialog .location-dialog-header {
+  margin-bottom: 4px;
+}
+
+.location-dialog .location-dialog-hint {
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+
+.location-dialog .zone-layout {
+  padding: 14px;
+}
+
+.location-dialog .zone-layout > .panel-heading {
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+
+.location-dialog .zone-layout > .panel-heading:empty {
+  display: none;
+}
+
+.location-dialog .zone-layout > p.muted {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.location-dialog .layout-controls {
+  padding: 12px;
+}
+
+.location-dialog .layout-controls > p {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.location-dialog .layout-room {
+  margin: 14px 0;
+}
+
+/* Mobile layout */
+@media (max-width: 480px) {
+  .zone-layout .layout-location-row {
+    flex-wrap: wrap;
+  }
+
+  .zone-layout .layout-location-row > label {
+    flex-basis: 100%;
+  }
+
+  .zone-layout .layout-location-row > button {
+    margin-left: auto;
+  }
+}
