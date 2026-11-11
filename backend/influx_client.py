@@ -1,6 +1,6 @@
-import random
 import json
 import math
+import random
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
@@ -8,7 +8,20 @@ from influxdb_client import InfluxDBClient
 from influxdb_client.client.query_api import QueryApi
 
 from config import settings
-from schemas import ComplianceStatus, LiveZoneReading, TrendPoint
+from schemas import ComplianceStatus, LiveZoneReading, NodeReading, TrendPoint
+
+ZONE_NAMES: Dict[str, str] = {
+    "zone_a": "Freezer Room A (Frozen Poultry)",
+    "zone_b": "Chilled Room B (Fresh Poultry)",
+    "zone_c": "Loading Dock (Buffer)",
+}
+
+NODE_NAMES: Dict[str, str] = {
+    "node_1": "Corner 1 (node_1)",
+    "node_2": "Corner 2 (node_2)",
+    "node_3": "Corner 3 (node_3)",
+    "node_4": "Corner 4 (node_4)",
+}
 
 class InfluxService:
     def __init__(self):
@@ -42,44 +55,46 @@ class InfluxService:
         else:
             return ComplianceStatus.CRITICAL
 
-    def get_live_readings(self) -> List[LiveZoneReading]:
-        """Query 1: Fetches the most recent reading for each zone using last() and pivot()."""
+    def get_nodes_live(self, zone_id: Optional[str] = None, node_id: Optional[str] = None) -> List[NodeReading]:
+        """Fetches the most recent reading for each sensor node using last() and pivot()."""
         if settings.USE_MOCK_DATA:
-            return self._generate_mock_live()
+            return self._generate_mock_nodes(zone_id=zone_id, node_id=node_id)
+
+        zone_filter = f'|> filter(fn: (r) => r["zone_id"] == "{zone_id}")' if zone_id else ""
+        node_filter = f'|> filter(fn: (r) => r["node_id"] == "{node_id}")' if node_id else ""
 
         flux_query = f'''
         from(bucket: "{settings.INFLUX_BUCKET}")
           |> range(start: -2h)
           |> filter(fn: (r) => r["_measurement"] == "zone_environment")
+          {zone_filter}
+          {node_filter}
           |> filter(fn: (r) => r["_field"] == "temp_c" or r["_field"] == "humidity" or r["_field"] == "power_ok")
           |> last()
-          |> pivot(rowKey: ["_time", "zone_id"], columnKey: ["_field"], valueColumn: "_value")
+          |> map(fn: (r) => ({{ r with node_id: if exists r.node_id then r.node_id else "node_1" }}))
+          |> pivot(rowKey: ["_time", "zone_id", "node_id"], columnKey: ["_field"], valueColumn: "_value")
         '''
 
         query_api = self.get_query_api()
         tables = query_api.query(flux_query, org=settings.clean_org)
 
-        results: List[LiveZoneReading] = []
-        zone_names = {
-            "zone_a": "Freezer Room A (Frozen Poultry)",
-            "zone_b": "Chilled Room B (Fresh Poultry)",
-            "zone_c": "Loading Dock (Buffer)",
-        }
-
+        nodes: List[NodeReading] = []
         for table in tables:
             for record in table.records:
                 values = record.values
-                zone_id = values.get("zone_id", "unknown")
+                z_id = values.get("zone_id", zone_id or "unknown")
+                n_id = values.get("node_id", node_id or "node_1")
                 temp_c = values.get("temp_c")
                 humidity = values.get("humidity")
                 power_ok = values.get("power_ok", True)
                 source = values.get("source", "LIVE")
                 record_time = record.get_time()
 
-                results.append(
-                    LiveZoneReading(
-                        zone_id=zone_id,
-                        name=zone_names.get(zone_id, f"Storage Zone ({zone_id})"),
+                nodes.append(
+                    NodeReading(
+                        node_id=str(n_id),
+                        zone_id=str(z_id),
+                        name=NODE_NAMES.get(str(n_id), f"Sensor Node ({n_id})"),
                         temp_c=round(float(temp_c), 2) if temp_c is not None else None,
                         humidity=round(float(humidity), 2) if humidity is not None else None,
                         power_ok=bool(power_ok),
@@ -89,12 +104,50 @@ class InfluxService:
                     )
                 )
 
+        nodes.sort(key=lambda n: (n.zone_id, n.node_id))
+        return nodes
+
+    def get_live_readings(self) -> List[LiveZoneReading]:
+        """Query 1: Fetches the most recent reading for each zone aggregated across its nodes."""
+        if settings.USE_MOCK_DATA:
+            return self._generate_mock_live()
+
+        all_nodes = self.get_nodes_live()
+        grouped: Dict[str, List[NodeReading]] = {}
+        for node in all_nodes:
+            grouped.setdefault(node.zone_id, []).append(node)
+
+        results: List[LiveZoneReading] = []
+        for zone_id, zone_nodes in sorted(grouped.items()):
+            valid_temps = [n.temp_c for n in zone_nodes if n.temp_c is not None]
+            valid_hums = [n.humidity for n in zone_nodes if n.humidity is not None]
+
+            avg_temp = round(sum(valid_temps) / len(valid_temps), 2) if valid_temps else None
+            avg_hum = round(sum(valid_hums) / len(valid_hums), 2) if valid_hums else None
+            power_ok = all(n.power_ok for n in zone_nodes)
+            source = "BACKFILL" if any(n.source == "BACKFILL" for n in zone_nodes) else "LIVE"
+            latest_time = max((n.timestamp for n in zone_nodes), default=datetime.now(timezone.utc))
+
+            results.append(
+                LiveZoneReading(
+                    zone_id=zone_id,
+                    name=ZONE_NAMES.get(zone_id, f"Storage Zone ({zone_id})"),
+                    temp_c=avg_temp,
+                    humidity=avg_hum,
+                    power_ok=power_ok,
+                    source=source,
+                    status=self.calculate_status(avg_temp),
+                    timestamp=latest_time,
+                    nodes=zone_nodes,
+                )
+            )
+
         return results
 
     def get_zone_trend(self, zone_id: str, hours: int = 24) -> List[TrendPoint]:
-        """Query 2: Fetches historical trend downsampled to 5-minute averages using aggregateWindow."""
+        """Query 2: Fetches historical zone trend downsampled to 5-minute averages across all nodes in the zone."""
         if settings.USE_MOCK_DATA:
-            return self._generate_mock_trend(zone_id, hours)
+            return self._generate_mock_trend(zone_id=zone_id, hours=hours)
 
         flux_query = f'''
         from(bucket: "{settings.INFLUX_BUCKET}")
@@ -102,11 +155,34 @@ class InfluxService:
           |> filter(fn: (r) => r["_measurement"] == "zone_environment")
           |> filter(fn: (r) => r["zone_id"] == "{zone_id}")
           |> filter(fn: (r) => r["_field"] == "temp_c" or r["_field"] == "humidity")
+          |> group(columns: ["_field"])
           |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
           |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
           |> sort(columns: ["_time"])
         '''
 
+        return self._execute_trend_query(flux_query)
+
+    def get_node_trend(self, zone_id: str, node_id: str, hours: int = 24) -> List[TrendPoint]:
+        """Query 3: Fetches historical trend for a single sensor node downsampled to 5-minute averages."""
+        if settings.USE_MOCK_DATA:
+            return self._generate_mock_trend(zone_id=zone_id, hours=hours, node_id=node_id)
+
+        flux_query = f'''
+        from(bucket: "{settings.INFLUX_BUCKET}")
+          |> range(start: -{hours}h)
+          |> filter(fn: (r) => r["_measurement"] == "zone_environment")
+          |> filter(fn: (r) => r["zone_id"] == "{zone_id}")
+          |> filter(fn: (r) => r["node_id"] == "{node_id}")
+          |> filter(fn: (r) => r["_field"] == "temp_c" or r["_field"] == "humidity")
+          |> aggregateWindow(every: 5m, fn: mean, createEmpty: false)
+          |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
+          |> sort(columns: ["_time"])
+        '''
+
+        return self._execute_trend_query(flux_query)
+
+    def _execute_trend_query(self, flux_query: str) -> List[TrendPoint]:
         query_api = self.get_query_api()
         tables = query_api.query(flux_query, org=settings.clean_org)
 
@@ -174,42 +250,72 @@ class InfluxService:
                     raise ValueError("Reading limit exceeded")
         return rows
 
-    # Safe Mock Generators for Offline Testing 
+    # Safe Mock Generators for Offline Testing (Simulating 4 Corner Nodes per Zone)
+    def _generate_mock_nodes(self, zone_id: Optional[str] = None, node_id: Optional[str] = None) -> List[NodeReading]:
+        now = datetime.now(timezone.utc)
+        target_zones = [zone_id] if zone_id else ["zone_a", "zone_b"]
+        all_node_ids = ["node_1", "node_2", "node_3", "node_4"]
+        target_nodes = [n for n in all_node_ids if n == node_id] if node_id else all_node_ids
+
+        nodes: List[NodeReading] = []
+        for z_id in target_zones:
+            base_temp = -19.3 if z_id == "zone_a" else 2.1
+            base_hum = 82.4 if z_id == "zone_a" else 78.5
+            for n_id in target_nodes:
+                temp = round(base_temp + random.uniform(-0.4, 0.4), 2)
+                hum = round(base_hum + random.uniform(-1.5, 1.5), 1)
+                nodes.append(
+                    NodeReading(
+                        node_id=n_id,
+                        zone_id=z_id,
+                        name=NODE_NAMES.get(n_id, f"Sensor Node ({n_id})"),
+                        temp_c=temp,
+                        humidity=hum,
+                        power_ok=True,
+                        source="LIVE",
+                        status=ComplianceStatus.NORMAL,
+                        timestamp=now,
+                    )
+                )
+        return nodes
+
     def _generate_mock_live(self) -> List[LiveZoneReading]:
         now = datetime.now(timezone.utc)
-        return [
-            LiveZoneReading(
-                zone_id="zone_a",
-                name="Freezer Room A (Frozen Poultry)",
-                temp_c=round(-19.3 + random.uniform(-0.3, 0.3), 2),
-                humidity=round(82.4 + random.uniform(-1.0, 1.0), 1),
-                power_ok=True,
-                source="LIVE",
-                status=ComplianceStatus.NORMAL,
-                timestamp=now,
-            ),
-            LiveZoneReading(
-                zone_id="zone_b",
-                name="Chilled Room B (Fresh Poultry)",
-                temp_c=round(2.1 + random.uniform(-0.2, 0.2), 2),
-                humidity=round(78.5 + random.uniform(-1.5, 1.5), 1),
-                power_ok=True,
-                source="LIVE",
-                status=ComplianceStatus.NORMAL,
-                timestamp=now,
-            ),
-        ]
+        results: List[LiveZoneReading] = []
 
-    def _generate_mock_trend(self, zone_id: str, hours: int) -> List[TrendPoint]:
-        points = []
+        for z_id in ["zone_a", "zone_b"]:
+            zone_nodes = self._generate_mock_nodes(zone_id=z_id)
+            avg_temp = round(sum(n.temp_c for n in zone_nodes if n.temp_c is not None) / len(zone_nodes), 2)
+            avg_hum = round(sum(n.humidity for n in zone_nodes if n.humidity is not None) / len(zone_nodes), 1)
+
+            results.append(
+                LiveZoneReading(
+                    zone_id=z_id,
+                    name=ZONE_NAMES.get(z_id, f"Storage Zone ({z_id})"),
+                    temp_c=avg_temp,
+                    humidity=avg_hum,
+                    power_ok=True,
+                    source="LIVE",
+                    status=ComplianceStatus.NORMAL,
+                    timestamp=now,
+                    nodes=zone_nodes,
+                )
+            )
+        return results
+
+    def _generate_mock_trend(self, zone_id: str, hours: int, node_id: Optional[str] = None) -> List[TrendPoint]:
+        points: List[TrendPoint] = []
         now = datetime.now(timezone.utc)
         interval_minutes = 5
         total_points = (hours * 60) // interval_minutes
         base_temp = -19.2 if zone_id == "zone_a" else 2.0
+        # Slight per-node offset in mock mode so individual node curves look distinct
+        node_offsets = {"node_1": -0.15, "node_2": 0.10, "node_3": -0.05, "node_4": 0.20}
+        offset = node_offsets.get(node_id, 0.0) if node_id else 0.0
 
         for i in range(total_points, -1, -1):
             point_time = now - timedelta(minutes=i * interval_minutes)
-            temp = round(base_temp + random.uniform(-0.6, 0.6), 2)
+            temp = round(base_temp + offset + random.uniform(-0.6, 0.6), 2)
             hum = round(80.0 + random.uniform(-3.0, 3.0), 1)
             points.append(TrendPoint(timestamp=point_time, temp_c=temp, humidity=hum))
 

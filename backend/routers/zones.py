@@ -3,7 +3,14 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Query
 
 from influx_client import influx_service
-from schemas import LiveZoneReading, LiveZonesResponse, ZoneTrendResponse
+from schemas import (
+    LiveZoneReading,
+    LiveZonesResponse,
+    NodeReading,
+    NodeTrendResponse,
+    ZoneNodesResponse,
+    ZoneTrendResponse,
+)
 
 router = APIRouter(prefix="/api/zones", tags=["Zones & Cold Rooms"])
 
@@ -19,7 +26,7 @@ def get_live_zones():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database query error: {str(e)}")
 
-@router.get("/{zone_id}/trend", response_model=ZoneTrendResponse, summary="Get historical trend data for Recharts")
+@router.get("/{zone_id}/trend", response_model=ZoneTrendResponse, summary="Get historical trend data for a zone")
 def get_zone_trend(
     zone_id: str,
     hours: int = Query(default=24, ge=1, le=168, description="History window in hours (1h to 7 days)")
@@ -28,6 +35,48 @@ def get_zone_trend(
         points = influx_service.get_zone_trend(zone_id=zone_id, hours=hours)
         return ZoneTrendResponse(
             zone_id=zone_id,
+            hours=hours,
+            point_count=len(points),
+            data=points
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query error: {str(e)}")
+
+@router.get("/{zone_id}/nodes", response_model=ZoneNodesResponse, summary="Get latest live readings for all nodes in a zone")
+def get_zone_nodes(zone_id: str):
+    try:
+        nodes: List[NodeReading] = influx_service.get_nodes_live(zone_id=zone_id)
+        return ZoneNodesResponse(
+            zone_id=zone_id,
+            nodes=nodes,
+            count=len(nodes),
+            server_time=datetime.now(timezone.utc)
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query error: {str(e)}")
+
+@router.get("/{zone_id}/nodes/{node_id}", response_model=NodeReading, summary="Get latest live reading for a specific node")
+def get_single_node(zone_id: str, node_id: str):
+    try:
+        nodes: List[NodeReading] = influx_service.get_nodes_live(zone_id=zone_id, node_id=node_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database query error: {str(e)}")
+
+    if not nodes:
+        raise HTTPException(status_code=404, detail=f"Node '{node_id}' not found in zone '{zone_id}'")
+    return nodes[0]
+
+@router.get("/{zone_id}/nodes/{node_id}/trend", response_model=NodeTrendResponse, summary="Get historical trend data for a specific node")
+def get_single_node_trend(
+    zone_id: str,
+    node_id: str,
+    hours: int = Query(default=24, ge=1, le=168, description="History window in hours (1h to 7 days)")
+):
+    try:
+        points = influx_service.get_node_trend(zone_id=zone_id, node_id=node_id, hours=hours)
+        return NodeTrendResponse(
+            zone_id=zone_id,
+            node_id=node_id,
             hours=hours,
             point_count=len(points),
             data=points
