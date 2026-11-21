@@ -1,5 +1,5 @@
 /* Reading validation and freshness */
-export const FRESHNESS_LIMIT = 180_000;
+export const FRESHNESS_LIMIT = 30_000; // keep equal to backend STALE_AFTER_S
 
 export function isNumber(value) {
   return typeof value === "number" && Number.isFinite(value);
@@ -13,6 +13,16 @@ export function isFresh(reading, now = Date.now()) {
     now - timestamp <= FRESHNESS_LIMIT &&
     timestamp - now <= 30_000
   );
+}
+
+/* Trend label from °C/hour. Within ±TREND_LIMIT counts as stable. */
+export const TREND_LIMIT = 1;
+
+export function getTrend(rate) {
+  if (!isNumber(rate)) return null;
+  if (rate > TREND_LIMIT) return { text: "↑ Rising", tone: "up" };
+  if (rate < -TREND_LIMIT) return { text: "↓ Dropping", tone: "down" };
+  return { text: "→ Stable", tone: "flat" };
 }
 
 /* Value and date formatting */
@@ -61,6 +71,52 @@ export function getTemperatureStatus(temperature, limits) {
   return "Within limits";
 }
 
+export function formatLimits(limits) {
+  const hasMin = isNumber(limits?.min);
+  const hasMax = isNumber(limits?.max);
+
+  if (hasMin && hasMax) return `${limits.min} to ${limits.max} °C`;
+  if (hasMax) return `≤ ${limits.max} °C`;
+  if (hasMin) return `≥ ${limits.min} °C`;
+  return "Unavailable";
+}
+
+/* Warmest node with a recent valid reading (null if none) */
+export function getWorstNode(nodes, now = Date.now()) {
+  return nodes
+    .filter((node) => isFresh(node, now) && isNumber(node.temp_c))
+    .reduce(
+      (worst, node) =>
+        !worst || node.temp_c > worst.temp_c ? node : worst,
+      null
+    );
+}
+
+/* Outage messages: whole site, whole zone, or single sensor */
+export function getOutages(zones, now = Date.now()) {
+  const down = (node) =>
+    !isFresh(node, now) || !isNumber(node.temp_c);
+
+  const zoneDown = (zone) =>
+    zone.nodes?.length
+      ? zone.nodes.every(down)
+      : !isFresh(zone, now);
+
+  const downZones = zones.filter(zoneDown);
+
+  if (zones.length && downZones.length === zones.length) {
+    return ["Power down"];
+  }
+
+  return zones.flatMap((zone) =>
+    downZones.includes(zone)
+      ? [`${zone.name} down`]
+      : (zone.nodes || [])
+          .filter(down)
+          .map((node) => `${node.name} in ${zone.name} down`)
+  );
+}
+
 /* Current zone readings */
 export function getAverage(nodes, field, now = Date.now()) {
   const values = nodes
@@ -89,6 +145,7 @@ export function getZoneSummary(zone, now = Date.now()) {
     return {
       temp_c: zone.temp_c,
       humidity: zone.humidity,
+      rate_c_per_hour: zone.rate_c_per_hour,
       reporting: null,
       total: null,
     };
@@ -97,6 +154,7 @@ export function getZoneSummary(zone, now = Date.now()) {
   return {
     temp_c: getAverage(zone.nodes, "temp_c", now),
     humidity: getAverage(zone.nodes, "humidity", now),
+    rate_c_per_hour: getAverage(zone.nodes, "rate_c_per_hour", now),
 
     reporting: zone.nodes.filter(
       (node) =>
@@ -247,19 +305,26 @@ export function createDemoZones(hours = 24) {
 
         return {
           node_id: `node_${nodeIndex + 1}`,
-          name: `Node ${nodeIndex + 1}`,
+          name: `Sensor ${nodeIndex + 1}`,
+          location: [
+            "Near door",
+            "Back wall",
+            "Beside evaporator fan",
+            "Room centre",
+          ][nodeIndex],
 
           ...history.at(-1),
 
           health: "Healthy",
           power_ok: true,
 
-          // Illustrative analytics only.
-          rise_rate:
-            configuration.zone_id === "zone_a" &&
-            nodeIndex === 3
-              ? 0.08
-              : null,
+          // Illustrative trend only: one rising, one dropping, rest stable.
+          rate_c_per_hour:
+            configuration.zone_id === "zone_a" && nodeIndex === 3
+              ? 2.4
+              : configuration.zone_id === "zone_b" && nodeIndex === 1
+                ? -1.6
+                : 0.1,
 
           history,
         };

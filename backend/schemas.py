@@ -4,31 +4,33 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 class ComplianceStatus(str, Enum):
-    NORMAL = "NORMAL"        
-    WARNING = "WARNING"      
-    CRITICAL = "CRITICAL"    
+    NORMAL = "NORMAL"
+    WARNING = "WARNING"
+    CRITICAL = "CRITICAL"
+    NO_DATA = "NO_DATA"      # node silent, or its sensor reported ok=false
 
 class NodeReading(BaseModel):
-    node_id: str = Field(..., description="Node identifier, e.g. 'node_1'")
-    zone_id: str = Field(..., description="Parent zone identifier, e.g. 'zone_a'")
-    name: str = Field(..., description="Human-readable node label, e.g. 'Corner 1 (node_1)'")
-    temp_c: Optional[float] = Field(None, description="Latest node temperature in Celsius")
-    humidity: Optional[float] = Field(None, description="Latest node relative humidity percentage")
-    power_ok: bool = Field(True, description="True if Mains, False if Battery Backup")
-    source: str = Field("LIVE", description="'LIVE' or 'BACKFILL'")
-    status: ComplianceStatus = Field(ComplianceStatus.NORMAL, description="Regulatory status")
-    timestamp: datetime = Field(..., description="UTC timestamp of the reading")
+    node_id: str = Field(..., description="Node identifier, e.g. 'N01'")
+    zone_id: str = Field(..., description="Parent zone identifier, e.g. 'Z1'")
+    name: str = Field(..., description="Display name from site config, e.g. 'Sensor 1'")
+    location: str = Field("", description="Where the node sits in the room, from site config")
+    temp_c: Optional[float] = Field(None, description="Latest temperature in Celsius; None if no valid reading")
+    humidity: Optional[float] = Field(None, description="Latest relative humidity percentage")
+    status: ComplianceStatus = Field(ComplianceStatus.NO_DATA, description="Status against the zone limits")
+    rate_c_per_hour: Optional[float] = Field(None, description="Temperature change over the last 30 min; None if offline or too little data")
+    timestamp: Optional[datetime] = Field(None, description="UTC time of the latest report; None if never reported")
 
 class LiveZoneReading(BaseModel):
-    zone_id: str = Field(..., description="Zone identifier, e.g. 'zone_a'")
-    name: str = Field(..., description="Human-readable zone name")
-    temp_c: Optional[float] = Field(None, description="Latest average temperature in Celsius across nodes")
-    humidity: Optional[float] = Field(None, description="Latest average relative humidity percentage across nodes")
-    power_ok: bool = Field(True, description="True if Mains, False if Battery Backup")
-    source: str = Field("LIVE", description="'LIVE' or 'BACKFILL'")
-    status: ComplianceStatus = Field(ComplianceStatus.NORMAL, description="Regulatory status")
-    timestamp: datetime = Field(..., description="UTC timestamp of the reading")
-    nodes: List[NodeReading] = Field(default_factory=list, description="Individual sensor node readings in this zone")
+    zone_id: str = Field(..., description="Zone identifier, e.g. 'Z1'")
+    name: str = Field(..., description="Display name from site config")
+    type: str = Field("", description="Room type from site config, e.g. 'Frozen storage'")
+    limits: Optional[dict] = Field(None, description="Zone limits: min/max/warn_margin")
+    temp_c: Optional[float] = Field(None, description="Mean temperature across reporting nodes")
+    humidity: Optional[float] = Field(None, description="Mean humidity across reporting nodes")
+    status: ComplianceStatus = Field(ComplianceStatus.NO_DATA, description="Worst node status in the zone")
+    rate_c_per_hour: Optional[float] = Field(None, description="Mean of the reporting nodes' rates")
+    timestamp: Optional[datetime] = Field(None, description="UTC time of the newest node report")
+    nodes: List[NodeReading] = Field(default_factory=list, description="Every configured node in the zone")
 
 class LiveZonesResponse(BaseModel):
     zones: List[LiveZoneReading]

@@ -43,6 +43,10 @@ npm run dev
 
 Open http://localhost:5173. API docs are at http://localhost:8000/docs.
 
+## Setting up a client
+
+Each client's zones, nodes and limits live in one file, `backend/sites/<client>.json`, chosen with `SITE_CONFIG=sites/<client>.json` in `backend/.env`. Copy `sites/demo.json` and edit it. Zone and node IDs must match the tags the firmware writes. The dashboard builds itself from that file; see `Software_Architecture.md` section 4.
+
 ## Mock vs live data
 
 The backend uses mock data by default, so it runs without a database. For live data, create `backend/.env`:

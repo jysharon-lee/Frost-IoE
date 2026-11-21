@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Query
 from analytics import sensor_health
 from config import settings
 from influx_client import influx_service
+from sitecfg import BASELINE_OFFSETS
 
 router = APIRouter(prefix="/api", tags=["Sensor health"])
 
@@ -14,5 +15,5 @@ def get_sensor_health(zone_id: str = Query(min_length=1, max_length=128, pattern
     except Exception:
         raise HTTPException(503, "Sensor history is unavailable")
     return {"zone_id": zone_id, "generated_at": now, "mock_mode": settings.USE_MOCK_DATA,
-            "sensors": sensor_health(rows, now, settings.SENSOR_BASELINE_OFFSETS),
+            "sensors": sensor_health(rows, now, BASELINE_OFFSETS),
             "status": "available" if rows else "no_data"}

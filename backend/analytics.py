@@ -30,6 +30,14 @@ def coverage(points, now, minutes):
     return None
 
 
+def rate_per_min(points):
+    """Least-squares slope (°C/min) of [(datetime, temp)]; needs 2+ distinct times."""
+    times = [(t-points[0][0]).total_seconds()/60 for t,_ in points]
+    temps = [v for _,v in points]
+    xm, ym = sum(times)/len(times), sum(temps)/len(temps)
+    return sum((x-xm)*(y-ym) for x,y in zip(times,temps))/sum((x-xm)**2 for x in times)
+
+
 def forecast(rows, now, limit):
     points = clean_points(rows, now-timedelta(minutes=10), now)
     result = {"status": "unavailable", "reason": coverage(points, now, 10),
@@ -38,11 +46,8 @@ def forecast(rows, now, limit):
               "minutes_to_limit": None, "early_warning": False}
     if result["reason"]:
         return result
-    times = [(t-points[0][0]).total_seconds()/60 for t,_ in points]
-    temps = [v for _,v in points]
-    xm, ym = sum(times)/len(times), sum(temps)/len(temps)
-    slope = sum((x-xm)*(y-ym) for x,y in zip(times,temps))/sum((x-xm)**2 for x in times)
-    current = temps[-1]
+    slope = rate_per_min(points)
+    current = points[-1][1]
     eta = max(0.0, (limit-current)/slope) if slope > 1e-9 else None
     breached = current > limit
     if breached:

@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import settings
 from influx_client import influx_service
 from routers import zones, forecast, health, report
+from sitecfg import site
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,6 +44,10 @@ def root():
         "mock_mode": settings.USE_MOCK_DATA,
         "docs_url": "/docs"
     }
+
+@app.get("/api/site", tags=["Site"], summary="Client site config: company, zones, nodes, limits")
+def get_site():
+    return site
 
 @app.get("/api/health", tags=["Health"])
 def health_check():

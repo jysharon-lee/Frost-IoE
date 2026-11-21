@@ -1,12 +1,30 @@
 import { useEffect, useState } from "react";
 
-import { getLiveZones, getZoneTrend } from "../api";
+import { getLiveZones, getSite, getZoneTrend } from "../api";
 import { createDemoZones } from "../utils/data";
+
+/* Client site config, loaded once. Null if the backend is unreachable. */
+
+export function useSite() {
+  const [site, setSite] = useState(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    getSite(controller.signal)
+      .then(setSite)
+      .catch(() => {});
+
+    return () => controller.abort();
+  }, []);
+
+  return site;
+}
 
 /* Live zone readings */
 
 export function useLiveZones(mode, hours, refreshKey) {
-  const [zones, setZones] = useState([]);
+  const [data, setData] = useState({ mode, zones: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastRefresh, setLastRefresh] = useState(null);
@@ -17,7 +35,7 @@ export function useLiveZones(mode, hours, refreshKey) {
 
     const controller = new AbortController();
 
-    setZones([]);
+    setData({ mode, zones: [] });
     setError("");
     setLastRefresh(null);
 
@@ -31,7 +49,7 @@ export function useLiveZones(mode, hours, refreshKey) {
             : await getLiveZones(controller.signal);
 
         if (!cancelled) {
-          setZones(result.zones);
+          setData({ mode, zones: result.zones });
           setLastRefresh(Date.now());
           setError("");
         }
@@ -60,8 +78,10 @@ export function useLiveZones(mode, hours, refreshKey) {
     };
   }, [mode, hours, refreshKey]);
 
+  // Effects run after render, so on a mode switch the first render still
+  // holds the old mode's zones (no node.history in demo). Hide them.
   return {
-    zones,
+    zones: data.mode === mode ? data.zones : [],
     loading,
     error,
     lastRefresh,

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TriangleAlert } from "lucide-react";
 
 import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
@@ -11,10 +12,12 @@ import ZonePage from "./pages/ZonePage";
 import {
   useCurrentTime,
   useLiveZones,
+  useSite,
   useZoneHistory,
 } from "./hooks/useDashboardData";
 
 import {
+  getOutages,
   getTemperatureStatus,
   isFresh,
   isNumber,
@@ -49,6 +52,8 @@ export default function App() {
   const isDemo = mode === "demo";
 
   const live = useLiveZones(mode, hours, refreshKey);
+  const site = useSite();
+  const outages = getOutages(live.zones, now);
 
   const rawZone = live.zones.find(
     (item) => item.zone_id === page
@@ -148,6 +153,7 @@ export default function App() {
 
       <main>
         <Header
+          company={site?.company}
           title={title}
           subtitle={
             zone?.type ||
@@ -169,6 +175,16 @@ export default function App() {
             {live.lastRefresh
               ? "Showing last available readings. Check their timestamps."
               : "No readings loaded."}
+          </div>
+        )}
+
+        {outages.length > 0 && (
+          <div className="notice danger" role="alert">
+            <TriangleAlert size={19} />
+            <span>
+              {outages.join(" · ")}. Nodes may be logging
+              locally and will sync when the link returns.
+            </span>
           </div>
         )}
 

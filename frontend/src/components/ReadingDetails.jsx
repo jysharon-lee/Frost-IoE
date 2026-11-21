@@ -5,6 +5,7 @@ import {
   Droplets,
   Radio,
   Thermometer,
+  ThermometerSun,
   TriangleAlert,
 } from "lucide-react";
 
@@ -12,6 +13,7 @@ import AnalyticsPanel from "./AnalyticsPanel";
 import LocationCard from "./LocationCard";
 import MetricCard from "./MetricCard";
 import NodeCard from "./NodeCard";
+import TrendTag from "./TrendTag";
 import ZoneHistoryCharts from "./ZoneHistoryCharts";
 
 import {
@@ -20,6 +22,7 @@ import {
   formatValue,
   getDemoZoneHistory,
   getTemperatureStatus,
+  getWorstNode,
   getZoneSummary,
   isFresh,
 } from "../utils/data";
@@ -44,6 +47,12 @@ export default function ReadingDetails({
 
   const summary = getZoneSummary(zone, now);
   const current = node || summary;
+
+  // Zone view with per-node data: mean, warmest node and node cards.
+  const hasNodes = !node && zone.nodes?.length > 0;
+  const worst = hasNodes
+    ? getWorstNode(zone.nodes, now)
+    : null;
 
   const readings = isDemo
     ? node
@@ -124,12 +133,35 @@ export default function ReadingDetails({
                 : "Zone temperature"
           }
           value={formatValue(current.temp_c, "°C")}
-          description={getTemperatureStatus(
-            current.temp_c,
-            zone.limits
-          )}
+          description={
+            <>
+              {hasNodes
+                ? `${summary.reporting} / ${summary.total} sensors reporting`
+                : getTemperatureStatus(
+                    current.temp_c,
+                    zone.limits
+                  )}{" "}
+              <TrendTag rate={current.rate_c_per_hour} />
+            </>
+          }
           icon={Thermometer}
         />
+
+        {hasNodes && (
+          <MetricCard
+            title="Warmest sensor"
+            value={formatValue(worst?.temp_c, "°C")}
+            description={
+              worst
+                ? `${worst.name} · ${worst.location} · ${getTemperatureStatus(
+                    worst.temp_c,
+                    zone.limits
+                  )}`
+                : "No recent readings"
+            }
+            icon={ThermometerSun}
+          />
+        )}
 
         <MetricCard
           title={
@@ -143,28 +175,30 @@ export default function ReadingDetails({
           icon={Droplets}
         />
 
-        <MetricCard
-          title={
-            node ? "Reading freshness" : "Reporting nodes"
-          }
-          value={
-            node
-              ? isFresh(node, now)
-                ? "Recent"
-                : "Stale"
-              : isDemo
-                ? `${summary.reporting} / ${summary.total}`
-                : "—"
-          }
-          description={
-            node
-              ? formatDateTime(node.timestamp)
-              : isDemo
-                ? "Recent valid temperature readings"
-                : "Individual nodes unavailable"
-          }
-          icon={Radio}
-        />
+        {!hasNodes && (
+          <MetricCard
+            title={
+              node ? "Reading freshness" : "Reporting nodes"
+            }
+            value={
+              node
+                ? isFresh(node, now)
+                  ? "Recent"
+                  : "Stale"
+                : isDemo
+                  ? `${summary.reporting} / ${summary.total}`
+                  : "—"
+            }
+            description={
+              node
+                ? formatDateTime(node.timestamp)
+                : isDemo
+                  ? "Recent valid temperature readings"
+                  : "Individual nodes unavailable"
+            }
+            icon={Radio}
+          />
+        )}
       </div>
 
       {isDemo && !node && relevantBreaches.length > 0 && (
@@ -175,14 +209,15 @@ export default function ReadingDetails({
         </div>
       )}
 
-      {isDemo && !node && (
+      {hasNodes && (
         <div className="node-grid">
-          {(zone.nodes || []).map((sensor) => (
+          {zone.nodes.map((sensor) => (
             <NodeCard
               key={sensor.node_id}
               node={sensor}
               limits={zone.limits}
               now={now}
+              isWorst={sensor.node_id === worst?.node_id}
               onSelect={onSelectNode}
             />
           ))}

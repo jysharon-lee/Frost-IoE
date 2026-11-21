@@ -9,14 +9,13 @@ class Settings(BaseSettings):
     INFLUX_BUCKET: str = "FROST-IoE"
     INFLUX_TOKEN: str = ""
 
-    # Per-sensor commissioning offsets in Celsius, keyed by sensor_id/node_id.
-    SENSOR_BASELINE_OFFSETS: dict[str, float] = {}
-
     USE_MOCK_DATA: bool = True
 
-    # Statutory Food Hygiene Thresholds 
-    TEMP_SAFE_THRESHOLD: float = -18.0     
-    TEMP_WARNING_THRESHOLD: float = -15.0  
+    # Newest reading older than this = node offline (no value, NO_DATA). 3x the MCU POLL_MS (10 s).
+    STALE_AFTER_S: int = 30
+
+    # Per-client zones/nodes/limits (relative to backend/). See sites/demo.json.
+    SITE_CONFIG: str = "sites/demo.json"
 
     # Server & CORS Settings (allow frontend to connect)
     BACKEND_HOST: str = "0.0.0.0"

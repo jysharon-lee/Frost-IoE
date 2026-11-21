@@ -27,6 +27,12 @@ export async function getJSON(path, signal) {
   return response.json();
 }
 
+/* Client site config (company name etc.) */
+
+export function getSite(signal) {
+  return getJSON("/api/site", signal);
+}
+
 /* Live zone readings */
 
 export async function getLiveZones(signal) {
@@ -44,8 +50,8 @@ export async function getLiveZones(signal) {
   return {
     zones: response.zones.map((zone) => ({
       ...zone,
-      type: "Zone readings",
-      nodes: [],
+      type: zone.type || "Zone readings",
+      nodes: zone.nodes ?? [],
       limits: zone.limits ?? null,
     })),
   };

@@ -7,6 +7,7 @@ import {
 
 import Badge from "../components/Badge";
 import MetricCard from "../components/MetricCard";
+import TrendTag from "../components/TrendTag";
 
 import {
   formatDateTime,
@@ -14,6 +15,7 @@ import {
   getTemperatureStatus,
   getZoneSummary,
   isFresh,
+  FRESHNESS_LIMIT,
 } from "../utils/data";
 
 export default function OverviewPage({
@@ -40,7 +42,7 @@ export default function OverviewPage({
               isFresh(zone, now)
             ).length
           }
-          description="Freshness window: 3 minutes"
+          description={`Freshness window: ${FRESHNESS_LIMIT / 1000} seconds`}
           icon={Radio}
         />
 
@@ -105,6 +107,8 @@ export default function OverviewPage({
                 <span>
                   {formatValue(values.humidity, "% RH")}
                 </span>
+
+                <TrendTag rate={values.rate_c_per_hour} />
               </div>
 
               {(!recent || isDemo) && (
