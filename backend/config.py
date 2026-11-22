@@ -17,6 +17,24 @@ class Settings(BaseSettings):
     # Per-client zones/nodes/limits (relative to backend/). See sites/demo.json.
     SITE_CONFIG: str = "sites/demo.json"
 
+    # Notification & Alert Engine Settings
+    ALERTS_ENABLED: bool = True
+    ALERT_POLL_INTERVAL_S: int = 60
+    SUSTAINED_BREACH_MINUTES: float = 10.0
+    OFFLINE_ALERT_AFTER_S: int = 180
+    FORECAST_ALERTS_ENABLED: bool = True
+    FORECAST_WARNING_MINUTES: float = 20.0
+
+    # Email (SMTP) Settings
+    EMAIL_ALERTS_ENABLED: bool = False
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USE_TLS: bool = True
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    ALERT_FROM_EMAIL: str = ""
+    ALERT_RECIPIENTS: List[str] = []
+
     # Server & CORS Settings (allow frontend to connect)
     BACKEND_HOST: str = "0.0.0.0"
     BACKEND_PORT: int = 8000

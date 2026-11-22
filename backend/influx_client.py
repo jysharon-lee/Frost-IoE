@@ -3,9 +3,10 @@ import math
 import random
 import re
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
-from influxdb_client import InfluxDBClient
+from typing import Dict, List, Optional, Tuple
+from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.query_api import QueryApi
+from influxdb_client.client.write_api import SYNCHRONOUS, WriteApi
 
 from analytics import rate_per_min
 from config import settings
@@ -15,6 +16,7 @@ from sitecfg import site, zone_limits
 # Firmware schema: measurement "environment", tags zone_id/node_id/buffered,
 # fields temp_c, rh_pct, ok (false = sensor did not answer; no temp_c/rh_pct written).
 MEASUREMENT = "environment"
+ALERT_MEASUREMENT = "alert_events"
 SEVERITY = [ComplianceStatus.NORMAL, ComplianceStatus.WARNING, ComplianceStatus.CRITICAL]
 
 
@@ -22,22 +24,39 @@ class InfluxService:
     def __init__(self):
         self._client: Optional[InfluxDBClient] = None
         self._query_api: Optional[QueryApi] = None
+        self._write_api: Optional[WriteApi] = None
+        self._mock_alert_events: List[dict] = []
 
-    def get_query_api(self) -> QueryApi:
-        """Lazy initialization of InfluxDB client and QueryApi."""
-        if self._query_api is None:
+    def _ensure_client(self) -> InfluxDBClient:
+        if self._client is None:
             self._client = InfluxDBClient(
                 url=settings.INFLUX_HOST,
                 token=settings.INFLUX_TOKEN,
                 org=settings.clean_org,
                 timeout=15_000
             )
-            self._query_api = self._client.query_api()
+        return self._client
+
+    def get_query_api(self) -> QueryApi:
+        """Lazy initialization of InfluxDB client and QueryApi."""
+        if self._query_api is None:
+            self._query_api = self._ensure_client().query_api()
         return self._query_api
 
+    def get_write_api(self) -> WriteApi:
+        """Lazy initialization of synchronous WriteApi for alert_events persistence."""
+        if self._write_api is None:
+            self._write_api = self._ensure_client().write_api(write_options=SYNCHRONOUS)
+        return self._write_api
+
     def close(self):
+        if self._write_api:
+            self._write_api.close()
+            self._write_api = None
         if self._client:
             self._client.close()
+            self._client = None
+            self._query_api = None
 
     def calculate_status(self, temp_c: Optional[float], limits: Optional[dict]) -> ComplianceStatus:
         """NORMAL inside limits, WARNING up to warn_margin outside them, CRITICAL beyond."""
@@ -237,6 +256,150 @@ class InfluxService:
                 if len(rows) > max_records:
                     raise ValueError("Reading limit exceeded")
         return rows
+
+    # --- Alert & Notification Persistence (measurement: alert_events) ---
+
+    def get_latest_live_timestamps(self) -> Dict[str, datetime]:
+        """node_id -> latest LIVE (non-buffered) report timestamp over the last 24h.
+
+        Excludes buffered="true" backfill rows so post-outage gap-filling never fires
+        or masks live offline alerts.
+        """
+        now = datetime.now(timezone.utc)
+        if settings.USE_MOCK_DATA:
+            return {n["node_id"]: now for z in site["zones"] for n in z["nodes"]}
+
+        query = f'''from(bucket: {json.dumps(settings.INFLUX_BUCKET)})
+          |> range(start: -24h)
+          |> filter(fn: (r) => r["_measurement"] == "{MEASUREMENT}" and r["_field"] == "ok")
+          |> filter(fn: (r) => not exists r["buffered"] or r["buffered"] != "true")
+          |> group(columns: ["zone_id", "node_id"])
+          |> last()'''
+        latest: Dict[str, datetime] = {}
+        for table in self.get_query_api().query(query, org=settings.clean_org):
+            for record in table.records:
+                node_id = record.values.get("node_id")
+                stamp = record.get_time()
+                if node_id and stamp:
+                    prev = latest.get(node_id)
+                    if prev is None or stamp > prev:
+                        latest[node_id] = stamp
+        return latest
+
+    def write_alert_event(self, event: dict) -> None:
+        """Persist an alert or recovery event into InfluxDB measurement `alert_events`."""
+        ts = event.get("timestamp") or datetime.now(timezone.utc)
+        record = {
+            "timestamp": ts,
+            "zone_id": str(event["zone_id"]),
+            "node_id": str(event.get("node_id") or "zone_aggregate"),
+            "alert_type": str(event["alert_type"]),
+            "severity": str(event["severity"]),
+            "state": str(event["state"]),
+            "message": str(event["message"]),
+            "temp_c": float(event["temp_c"]) if event.get("temp_c") is not None else None,
+            "limit_c": float(event["limit_c"]) if event.get("limit_c") is not None else None,
+            "peak_c": float(event["peak_c"]) if event.get("peak_c") is not None else None,
+            "duration_minutes": (
+                float(event["duration_minutes"]) if event.get("duration_minutes") is not None else None
+            ),
+            "email_sent": bool(event.get("email_sent", False)),
+        }
+        if settings.USE_MOCK_DATA:
+            self._mock_alert_events.append(record)
+            if len(self._mock_alert_events) > 1000:
+                self._mock_alert_events = self._mock_alert_events[-1000:]
+            return
+
+        point = (
+            Point(ALERT_MEASUREMENT)
+            .tag("zone_id", record["zone_id"])
+            .tag("node_id", record["node_id"])
+            .tag("alert_type", record["alert_type"])
+            .tag("severity", record["severity"])
+            .tag("state", record["state"])
+            .field("message", record["message"])
+            .field("email_sent", record["email_sent"])
+            .time(ts)
+        )
+        for field_name in ("temp_c", "limit_c", "peak_c", "duration_minutes"):
+            if record[field_name] is not None:
+                point = point.field(field_name, record[field_name])
+
+        self.get_write_api().write(bucket=settings.INFLUX_BUCKET, org=settings.clean_org, record=point)
+
+    def get_alert_events(
+        self,
+        zone_id: Optional[str] = None,
+        hours: int = 24,
+        limit: int = 200,
+    ) -> List[dict]:
+        """Return alert and recovery events from InfluxDB `alert_events`, newest first."""
+        if zone_id is not None and not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", zone_id):
+            raise ValueError("Invalid zone identifier")
+        if settings.USE_MOCK_DATA:
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+            filtered = [
+                e for e in self._mock_alert_events
+                if e["timestamp"] >= cutoff and (zone_id is None or e["zone_id"] == zone_id)
+            ]
+            filtered.sort(key=lambda e: e["timestamp"], reverse=True)
+            return filtered[:limit]
+
+        zone_filter = f'|> filter(fn: (r) => r["zone_id"] == {json.dumps(zone_id)})' if zone_id else ""
+        query = f'''from(bucket: {json.dumps(settings.INFLUX_BUCKET)})
+          |> range(start: -{int(hours)}h)
+          |> filter(fn: (r) => r["_measurement"] == "{ALERT_MEASUREMENT}")
+          {zone_filter}
+          |> pivot(rowKey: ["_time", "zone_id", "node_id", "alert_type", "severity", "state"], columnKey: ["_field"], valueColumn: "_value")
+          |> group()
+          |> sort(columns: ["_time"], desc: true)
+          |> limit(n: {int(limit)})'''
+        return self._parse_alert_tables(self.get_query_api().query(query, org=settings.clean_org))
+
+    def get_latest_alert_states(self, days: int = 7) -> Dict[Tuple[str, str, str], dict]:
+        """Return the latest event per (zone_id, node_id, alert_type) for startup hydration."""
+        if settings.USE_MOCK_DATA:
+            latest: Dict[Tuple[str, str, str], dict] = {}
+            for e in sorted(self._mock_alert_events, key=lambda x: x["timestamp"]):
+                latest[(e["zone_id"], e["node_id"], e["alert_type"])] = e
+            return latest
+
+        query = f'''from(bucket: {json.dumps(settings.INFLUX_BUCKET)})
+          |> range(start: -{int(days)}d)
+          |> filter(fn: (r) => r["_measurement"] == "{ALERT_MEASUREMENT}")
+          |> pivot(rowKey: ["_time", "zone_id", "node_id", "alert_type", "severity", "state"], columnKey: ["_field"], valueColumn: "_value")
+          |> group(columns: ["zone_id", "node_id", "alert_type"])
+          |> sort(columns: ["_time"], desc: true)
+          |> limit(n: 1)'''
+        events = self._parse_alert_tables(self.get_query_api().query(query, org=settings.clean_org))
+        return {(e["zone_id"], e["node_id"], e["alert_type"]): e for e in events}
+
+    @staticmethod
+    def _parse_alert_tables(tables) -> List[dict]:
+        events: List[dict] = []
+        for table in tables:
+            for record in table.records:
+                v = record.values
+                events.append({
+                    "timestamp": record.get_time(),
+                    "zone_id": v.get("zone_id", "unknown"),
+                    "node_id": v.get("node_id", "zone_aggregate"),
+                    "alert_type": v.get("alert_type", "unknown"),
+                    "severity": v.get("severity", "CRITICAL"),
+                    "state": v.get("state", "ALERTING"),
+                    "message": v.get("message", ""),
+                    "temp_c": round(float(v["temp_c"]), 2) if v.get("temp_c") is not None else None,
+                    "limit_c": round(float(v["limit_c"]), 2) if v.get("limit_c") is not None else None,
+                    "peak_c": round(float(v["peak_c"]), 2) if v.get("peak_c") is not None else None,
+                    "duration_minutes": (
+                        round(float(v["duration_minutes"]), 2)
+                        if v.get("duration_minutes") is not None
+                        else None
+                    ),
+                    "email_sent": bool(v.get("email_sent", False)),
+                })
+        return events
 
     # Mock data follows the site config so any client layout can be demoed.
     @staticmethod

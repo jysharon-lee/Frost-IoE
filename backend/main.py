@@ -2,16 +2,20 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from alerts.engine import alert_engine
 from config import settings
 from influx_client import influx_service
-from routers import zones, forecast, health, report
+from routers import alerts, forecast, health, report, zones
 from sitecfg import site
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    if settings.ALERTS_ENABLED:
+        await alert_engine.start()
     yield
-    # Shutdownl
+    # Shutdown
+    await alert_engine.stop()
     influx_service.close()
 
 app = FastAPI(
@@ -35,6 +39,7 @@ app.include_router(zones.router)
 app.include_router(forecast.router)
 app.include_router(health.router)
 app.include_router(report.router)
+app.include_router(alerts.router)
 
 @app.get("/", tags=["Health"])
 def root():
