@@ -1,6 +1,5 @@
 import json
 import math
-import random
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
@@ -10,6 +9,7 @@ from influxdb_client.client.write_api import SYNCHRONOUS, WriteApi
 
 from analytics import rate_per_min
 from config import settings
+from mock_scenarios import mock_last_seen, mock_sample
 from schemas import ComplianceStatus, LiveZoneReading, NodeReading, TrendPoint
 from sitecfg import site, zone_limits
 
@@ -113,9 +113,10 @@ class InfluxService:
                 if node_id not in (None, node["node_id"]):
                     continue
                 if settings.USE_MOCK_DATA:
-                    base = self._mock_base(zone["zone_id"])
-                    entry = {"ok": (True, now), "temp_c": (base + random.uniform(-0.4, 0.4), now),
-                             "rh_pct": (80 + random.uniform(-1.5, 1.5), now)}
+                    s = mock_sample(zone, node, now, self._mock_base(zone["zone_id"]))
+                    entry = {} if s is None else {"ok": (s["ok"], now)}
+                    if s and s["ok"]:
+                        entry.update(temp_c=(s["temp_c"], now), rh_pct=(s["rh_pct"], now))
                 else:
                     entry = latest.get(node["node_id"], {})
                 ok, stamp = entry.get("ok", (False, None))
@@ -220,14 +221,21 @@ class InfluxService:
             raise ValueError("Invalid zone identifier")
         max_records = 50_000
         if settings.USE_MOCK_DATA:
-            rows = []
-            stamp = start
+            zone = next((z for z in site["zones"] if z["zone_id"] == zone_id), None)
+            nodes = zone["nodes"] if zone else [{"node_id": None}]  # unknown zone: one anonymous series
             base = self._mock_base(zone_id)
+            rows = []
+            stamp = start.replace(second=0, microsecond=0)
+            if stamp < start:
+                stamp += timedelta(minutes=1)
             while stamp < end:
-                if len(rows) >= max_records:
-                    raise ValueError("Reading limit exceeded")
-                rows.append({"timestamp": stamp, "temp_c": base + 0.2 * math.sin(len(rows)/7),
-                             "humidity": 80.0, "source": "MOCK"})
+                for node in nodes:
+                    s = mock_sample(zone or {}, node, stamp, base)
+                    if s and s["ok"]:  # silent / ok=false nodes write no temp_c row, like the real bucket
+                        if len(rows) >= max_records:
+                            raise ValueError("Reading limit exceeded")
+                        rows.append({"timestamp": stamp, "temp_c": s["temp_c"], "node_id": node["node_id"],
+                                     "humidity": s["rh_pct"], "source": "MOCK"})
                 stamp += timedelta(minutes=1)
             return rows
         query = f'''from(bucket: {json.dumps(settings.INFLUX_BUCKET)})
@@ -267,7 +275,9 @@ class InfluxService:
         """
         now = datetime.now(timezone.utc)
         if settings.USE_MOCK_DATA:
-            return {n["node_id"]: now for z in site["zones"] for n in z["nodes"]}
+            seen = {n["node_id"]: mock_last_seen(z, n, now, self._mock_base(z["zone_id"]))
+                    for z in site["zones"] for n in z["nodes"]}
+            return {k: v for k, v in seen.items() if v}
 
         query = f'''from(bucket: {json.dumps(settings.INFLUX_BUCKET)})
           |> range(start: -24h)
@@ -285,6 +295,14 @@ class InfluxService:
                     if prev is None or stamp > prev:
                         latest[node_id] = stamp
         return latest
+
+    def get_failed_nodes(self) -> set:
+        """node_ids whose newest report says ok=false: node alive, sensor broken (offline rule cannot see these)."""
+        if settings.USE_MOCK_DATA:
+            now = datetime.now(timezone.utc)
+            return {n["node_id"] for z in site["zones"] for n in z["nodes"]
+                    if (mock_sample(z, n, now, 0.0) or {}).get("ok") is False}
+        return {n for n, f in self._latest_by_node().items() if "ok" in f and not f["ok"][0]}
 
     def write_alert_event(self, event: dict) -> None:
         """Persist an alert or recovery event into InfluxDB measurement `alert_events`."""
@@ -409,20 +427,18 @@ class InfluxService:
         return (lo + hi) / 2 if lo is not None else hi - 1.2
 
     def _generate_mock_trend(self, zone_id: str, hours: int, node_id: Optional[str] = None) -> List[TrendPoint]:
-        points: List[TrendPoint] = []
         now = datetime.now(timezone.utc)
-        interval_minutes = 5
-        total_points = (hours * 60) // interval_minutes
-        base_temp = self._mock_base(zone_id)
-        # Slight per-node offset so individual node curves look distinct
-        offset = (sum(map(ord, node_id)) % 5 - 2) * 0.1 if node_id else 0.0
-
-        for i in range(total_points, -1, -1):
-            point_time = now - timedelta(minutes=i * interval_minutes)
-            temp = round(base_temp + offset + random.uniform(-0.6, 0.6), 2)
-            hum = round(80.0 + random.uniform(-3.0, 3.0), 1)
-            points.append(TrendPoint(timestamp=point_time, temp_c=temp, humidity=hum))
-
+        zone = next((z for z in site["zones"] if z["zone_id"] == zone_id), None)
+        nodes = [n for n in (zone["nodes"] if zone else []) if node_id in (None, n["node_id"])]
+        base = self._mock_base(zone_id)
+        points: List[TrendPoint] = []
+        for i in range((hours * 60) // 5, -1, -1):
+            t = now - timedelta(minutes=5 * i)
+            ok = [s for n in nodes if (s := mock_sample(zone, n, t, base)) and s["ok"]]
+            points.append(TrendPoint(
+                timestamp=t,
+                temp_c=round(sum(s["temp_c"] for s in ok) / len(ok), 2) if ok else None,
+                humidity=round(sum(s["rh_pct"] for s in ok) / len(ok), 1) if ok else None))
         return points
 
 # Singleton instance for import across backend

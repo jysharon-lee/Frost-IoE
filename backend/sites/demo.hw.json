@@ -1,0 +1,30 @@
+{
+  "company": "Client ABC Sdn Bhd",
+  "timezone": "Asia/Kuching",
+  "zones": [
+    {
+      "zone_id": "Z1",
+      "name": "Zone 1",
+      "type": "Ambient storage",
+      "preset": "ambient",
+      "nodes": [
+        { "node_id": "N01", "name": "Sensor 1", "location": "Real sensor (AHT20)" },
+        { "node_id": "N02", "name": "Sensor 2", "location": "Simulated" },
+        { "node_id": "N03", "name": "Sensor 3", "location": "Simulated" }
+      ]
+    },
+    {
+      "zone_id": "Z2",
+      "name": "Zone 2",
+      "type": "Chilled storage",
+      "preset": "chilled",
+      "nodes": [
+        { "node_id": "N04", "name": "Sensor 4", "location": "Near door" },
+        { "node_id": "N05", "name": "Sensor 5", "location": "Room centre" },
+        { "node_id": "N06", "name": "Sensor 6", "location": "Back wall" },
+        { "node_id": "N07", "name": "Sensor 7", "location": "Back wall" },
+        { "node_id": "N08", "name": "Sensor 8", "location": "Back wall" }
+      ]
+    }
+  ]
+}

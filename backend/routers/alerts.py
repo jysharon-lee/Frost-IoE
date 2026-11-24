@@ -13,7 +13,9 @@ class AlertConfigUpdate(BaseModel):
     alerts_enabled: Optional[bool] = None
     forecast_alerts_enabled: Optional[bool] = None
     email_alerts_enabled: Optional[bool] = None
-    sustained_breach_minutes: Optional[float] = Field(None, ge=1.0, le=120.0)
+    sustained_breach_minutes: Optional[float] = Field(None, ge=0.5, le=120.0)
+    door_sustained_minutes: Optional[float] = Field(None, ge=0.5, le=240.0)
+    forecast_warning_minutes: Optional[float] = Field(None, ge=1.0, le=240.0)
     offline_alert_after_s: Optional[int] = Field(None, ge=30, le=3600)
 
 

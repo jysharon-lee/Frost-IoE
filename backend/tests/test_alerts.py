@@ -5,8 +5,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from unittest.mock import patch
+
+import mock_scenarios
 from alerts.engine import AlertEngine
 from alerts.notifiers import format_email
+from config import settings
+from influx_client import influx_service
 from alerts.rules import (
     evaluate_forecast_warning,
     evaluate_offline,
@@ -141,9 +146,13 @@ class _FakeInflux:
         self.live_stamps = {}
         self.raw_by_zone = {}
         self.written = []
+        self.failed = set()
 
     def get_latest_live_timestamps(self):
         return dict(self.live_stamps)
+
+    def get_failed_nodes(self):
+        return set(self.failed)
 
     def get_raw_readings(self, zone_id, start, end):
         return list(self.raw_by_zone.get(zone_id, []))
@@ -232,6 +241,29 @@ class AlertEngineTests(unittest.TestCase):
         self.assertAlmostEqual(e3[0]["peak_c"], -16.2, places=2)
         self.assertEqual(len(self.notifier.sent), 2)
 
+    def test_door_node_waits_longer_and_is_left_out_of_zone_average(self):
+        self.site_cfg["zones"][0]["nodes"] = [
+            {"node_id": "N01", "name": "Sensor 1"},
+            {"node_id": "N02", "name": "Sensor 2"},
+            {"node_id": "N03", "name": "Door", "is_door": True},
+        ]
+        self.influx.live_stamps = {n: self.now for n in ("N01", "N02", "N03")}
+
+        def rows(hot, minutes):  # `hot` node at -17 (over -18 limit) for `minutes`, others -19
+            return [{"timestamp": self.now - timedelta(minutes=i), "node_id": n,
+                     "temp_c": -17.0 if n == hot else -19.0, "source": "LIVE"}
+                    for n in ("N01", "N02", "N03") for i in range(minutes + 1)]
+
+        self.influx.raw_by_zone["Z1"] = rows("N03", 11)  # door: 11 min < 20 -> quiet
+        self.assertEqual(self.engine.evaluate_once(self.now), [])
+        self.influx.raw_by_zone["Z1"] = rows("N03", 20)  # door: 20 min -> own alert, zone average untouched
+        ev = self.engine.evaluate_once(self.now)
+        self.assertEqual([(e["node_id"], e["alert_type"]) for e in ev], [("N03", "node_breach")])
+
+        self.influx.raw_by_zone["Z1"] = rows("N01", 10)  # regular node: 10 min -> alerts
+        ev = [e for e in self.engine.evaluate_once(self.now) if e["state"] == "ALERTING"]  # N03 recovery also emitted
+        self.assertEqual([(e["node_id"], e["alert_type"]) for e in ev], [("N01", "node_breach")])
+
     def test_hydration_prevents_duplicate_email_after_restart(self):
         self.influx.raw_by_zone["Z1"] = self._raw_rows([-17.0] * 11, self.now)
         self.engine.evaluate_once(self.now)
@@ -280,6 +312,31 @@ class AlertEngineTests(unittest.TestCase):
         self.assertEqual(len(e2), 1)
         self.assertEqual(e2[0]["alert_type"], "forecast_early_warning")
         self.assertEqual(e2[0]["severity"], "WARNING")
+
+    def test_sensor_fault_needs_two_polls_to_open_and_close(self):
+        self.influx.failed = {"N01"}  # node alive, sensor answers ok=false
+        self.assertEqual(self.engine.evaluate_once(self.now), [])  # 1st bad poll: debounced
+        ev = self.engine.evaluate_once(self.now)
+        self.assertEqual([(e["node_id"], e["alert_type"], e["severity"]) for e in ev],
+                         [("N01", "sensor_fault", "WARNING")])
+        self.assertEqual(len(self.notifier.sent), 1)
+        self.influx.failed = set()
+        self.assertEqual(self.engine.evaluate_once(self.now), [])
+        self.assertEqual([e["state"] for e in self.engine.evaluate_once(self.now)], ["RESOLVED"])
+
+    def test_scripted_mock_faults_are_caught(self):
+        # Backend "started" 15 min ago: Z4 N12 silent since min 3, N13 ok=false since 10, Z3 N09 erratic since 4.
+        # Z1 is mid-ramp (only 2 min over limit) and Z2's door spike is short, so neither may alert yet.
+        now = datetime.now(timezone.utc)
+        with patch.multiple(settings, USE_MOCK_DATA=True, ERRATIC_WINDOW_MIN=10.0, ERRATIC_JUMP_C=3.0,
+                            FORECAST_WINDOW_MIN=10.0), \
+                patch.object(mock_scenarios, "START", now - timedelta(minutes=15)):
+            eng = AlertEngine(influx=influx_service, notifier=_FakeNotifier())
+            eng.sustained_breach_minutes, eng.door_sustained_minutes = 10.0, 20.0
+            eng.offline_alert_after_s, eng.forecast_warning_minutes = 180, 20.0
+            got = {(e["node_id"], e["alert_type"]) for e in eng.evaluate_once() + eng.evaluate_once()
+                   if e["state"] == "ALERTING"}
+        self.assertEqual(got, {("N12", "node_offline"), ("N13", "sensor_fault"), ("N09", "sensor_fault")})
 
     def test_format_email_contains_myt_and_details(self):
         subj, body = format_email({

@@ -19,6 +19,10 @@ def _load():
     cfg = json.loads(path.read_text(encoding="utf-8"))
     for zone in cfg["zones"]:  # bad preset / missing key fails at boot, not at 3am
         zone["limits"] = {**PRESETS[zone["preset"]], **zone.get("limits", {})}
+    for zone in cfg["zones"]:
+        for node in zone["nodes"]:
+            node["is_door"] = any(k.lower() in node.get("location", "").lower() for k in settings.DOOR_LOCATION_KEYWORDS)
+    print("Door nodes:", [n["node_id"] for z in cfg["zones"] for n in z["nodes"] if n["is_door"]])  # typo check at boot
     zones = [z["zone_id"] for z in cfg["zones"]]
     nodes = [n["node_id"] for z in cfg["zones"] for n in z["nodes"]]
     assert len(zones) == len(set(zones)), "duplicate zone_id in site config"

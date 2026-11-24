@@ -25,6 +25,19 @@ class Settings(BaseSettings):
     FORECAST_ALERTS_ENABLED: bool = True
     FORECAST_WARNING_MINUTES: float = 20.0
 
+    # Door nodes: node `location` containing a keyword (case-insensitive) marks it. Its own breach alert waits
+    # DOOR_SUSTAINED_MINUTES (regular nodes: SUSTAINED_BREACH_MINUTES) and it is left out of the zone average alerts use.
+    DOOR_LOCATION_KEYWORDS: List[str] = ["door"]
+    DOOR_SUSTAINED_MINUTES: float = 20.0
+
+    # Analytics windows (minutes). Defaults are the deployment values; shorten in .env only for demos.
+    FORECAST_WINDOW_MIN: float = 10.0
+    FLATLINE_WINDOW_MIN: float = 15.0
+    DRIFT_WINDOW_MIN: float = 360.0
+    # Erratic sensor: mean |change| between consecutive samples over the window exceeds the jump (see .env.demo).
+    ERRATIC_WINDOW_MIN: float = 10.0
+    ERRATIC_JUMP_C: float = 3.0
+
     # Email (SMTP) Settings
     EMAIL_ALERTS_ENABLED: bool = False
     SMTP_HOST: str = "smtp.gmail.com"

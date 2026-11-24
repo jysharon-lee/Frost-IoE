@@ -853,7 +853,7 @@ footer {
 .node-grid > .compact-node-card {
   position: relative;
   min-width: 0;
-  height: 144px;
+  height: 128px;
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -889,9 +889,9 @@ footer {
   flex-direction: column;
   align-items: stretch;
   justify-content: flex-start;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
-  padding: 10px 16px;
+  padding: 8px 16px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -912,7 +912,7 @@ footer {
 }
 
 .compact-node-card.open .node-card-face {
-  transform: translateY(-72px) scale(0.68); /* half the 144px card height */
+  transform: translateY(-64px) scale(0.64); /* half the 128px card height */
 }
 
 .node-card-details {
@@ -940,8 +940,8 @@ footer {
 
 .node-card-details dl {
   display: grid;
-  gap: 2px;
-  margin: 0 0 6px;
+  gap: 0;
+  margin: 0 0 4px;
 }
 
 .node-card-details dl > div {
@@ -962,7 +962,7 @@ footer {
 
 .node-card-details button {
   width: 100%;
-  padding: 4px 10px;
+  padding: 3px 10px;
   font-size: 0.75rem;
 }
 
@@ -970,7 +970,7 @@ footer {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 1.1rem;
+  font-size: 1rem;
   font-weight: 600;
 }
 
@@ -983,7 +983,7 @@ footer {
 }
 
 .compact-node-readings strong {
-  font-size: 1.375rem;
+  font-size: 1.25rem;
   line-height: 1.2;
   font-weight: 600;
 }
@@ -1017,26 +1017,28 @@ footer {
   background: var(--dot);
 }
 
+/* --dot lives on the card so the status pill and the card's edge stripe share it */
+.compact-node-card.normal { --dot: #12b076; }
+.compact-node-card.breach { --dot: #e5384f; }
+.compact-node-card.stale { --dot: #e59a14; }
+.compact-node-card.unavailable { --dot: #94a3b8; }
+
 .compact-node-status.normal {
-  --dot: #12b076;
   background: #d3f3e3;
   color: #0b6b49;
 }
 
 .compact-node-status.breach {
-  --dot: #e5384f;
   background: #ffdbe2;
   color: #a8203a;
 }
 
 .compact-node-status.stale {
-  --dot: #e59a14;
   background: #ffe9b8;
   color: #7a4f06;
 }
 
 .compact-node-status.unavailable {
-  --dot: #94a3b8;
   background: #e8edf3;
   color: #52627a;
 }
@@ -1238,3 +1240,43 @@ main > footer::before {
   padding: 8px 10px;
   font-size: 13px;
 }
+/* Zone summary: three separate cards, big figures, quiet icons */
+.reading-metrics .metric {
+  min-height: 0;
+  padding: 20px 24px;
+  border-radius: 12px;
+}
+
+.reading-metrics .metric-icon {
+  padding: 0;
+  color: #708697;
+  background: none;
+}
+
+.reading-metrics .metric p {
+  font-size: 13px;
+}
+
+.reading-metrics .metric strong {
+  font-size: 32px;
+  line-height: 1.1;
+}
+
+/* Sensor cards: smaller and tighter, status shown as an edge stripe */
+.node-grid > .compact-node-card {
+  border-radius: 8px;
+}
+
+.node-grid > .compact-node-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 1;
+  width: 4px;
+  background: var(--dot);
+}
+
+.node-grid > .compact-node-card .node-card-face {
+  padding-left: 20px;
+}
+

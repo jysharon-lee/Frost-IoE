@@ -1,16 +1,17 @@
 {
-  "company": "Demo Client Sdn Bhd",
+  "company": "Client ABC Sdn Bhd",
   "timezone": "Asia/Kuching",
   "zones": [
     {
       "zone_id": "Z1",
       "name": "Zone 1",
-      "type": "Ambient storage",
-      "preset": "ambient",
+      "type": "Frozen storage",
+      "preset": "frozen",
+      "mock": { "curve": [[0, 0], [2, 0], [2.1, 2.5], [3.6, 2.5], [3.7, 0], [6, 0], [24, 3.0], [28, 3.0], [34, 0]] },
       "nodes": [
-        { "node_id": "N01", "name": "Sensor 1", "location": "Real sensor (AHT20)" },
-        { "node_id": "N02", "name": "Sensor 2", "location": "Simulated" },
-        { "node_id": "N03", "name": "Sensor 3", "location": "Simulated" }
+        { "node_id": "N01", "name": "Sensor 1", "location": "Room centre" },
+        { "node_id": "N02", "name": "Sensor 2", "location": "Back wall" },
+        { "node_id": "N03", "name": "Sensor 3", "location": "Side wall" }
       ]
     },
     {
@@ -18,10 +19,35 @@
       "name": "Zone 2",
       "type": "Chilled storage",
       "preset": "chilled",
+      "mock": { "curve": [[0, 0], [16, 0], [26, 4.0], [29, 4.0], [36, 0]] },
       "nodes": [
-        { "node_id": "N04", "name": "Sensor 4", "location": "Near door" },
+        { "node_id": "N04", "name": "Sensor 4", "location": "Near door",
+          "mock": { "curve": [[0, 0], [2, 0], [2.5, 9], [6.5, 9], [7, 0], [9.5, 0], [10, 9], [17.5, 9], [18, 0]] } },
         { "node_id": "N05", "name": "Sensor 5", "location": "Room centre" },
-        { "node_id": "N06", "name": "Sensor 6", "location": "Back wall" }
+        { "node_id": "N06", "name": "Sensor 6", "location": "Back wall" },
+        { "node_id": "N07", "name": "Sensor 7", "location": "Back wall" }
+      ]
+    },
+    {
+      "zone_id": "Z3",
+      "name": "Zone 3",
+      "type": "Chilled storage",
+      "preset": "chilled",
+      "nodes": [
+        { "node_id": "N08", "name": "Sensor 8", "location": "Room centre" },
+        { "node_id": "N09", "name": "Sensor 9", "location": "Back wall", "mock": { "erratic": [[-60, 24, 8]] } },
+        { "node_id": "N10", "name": "Sensor 10", "location": "Side wall" }
+      ]
+    },
+    {
+      "zone_id": "Z4",
+      "name": "Zone 4",
+      "type": "Chilled storage",
+      "preset": "chilled",
+      "nodes": [
+        { "node_id": "N11", "name": "Sensor 11", "location": "Room centre" },
+        { "node_id": "N12", "name": "Sensor 12", "location": "Back wall", "mock": { "down": [[0.5, 22]] } },
+        { "node_id": "N13", "name": "Sensor 13", "location": "Side wall", "mock": { "fault": [[0.5, 26]] } }
       ]
     }
   ]

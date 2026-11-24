@@ -44,6 +44,7 @@ export default function NodeCard({
     <div
       className={[
         "panel compact-node-card",
+        statusClass,
         outsideLimits ? "has-breach" : "",
         isWorst ? "is-worst" : "",
         open ? "open" : "",

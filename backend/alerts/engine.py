@@ -9,8 +9,10 @@ from alerts.rules import (
     evaluate_forecast_warning,
     evaluate_offline,
     evaluate_sustained_breach,
+    is_backfill,
     zone_average_live_series,
 )
+from analytics import erratic
 from config import settings
 from influx_client import influx_service
 from sitecfg import site
@@ -32,9 +34,11 @@ class AlertEngine:
         self.offline_alert_after_s: int = settings.OFFLINE_ALERT_AFTER_S
         self.forecast_alerts_enabled: bool = settings.FORECAST_ALERTS_ENABLED
         self.forecast_warning_minutes: float = settings.FORECAST_WARNING_MINUTES
+        self.door_sustained_minutes: float = settings.DOOR_SUSTAINED_MINUTES
 
         self._active: Dict[AlertKey, dict] = {}
         self._forecast_streak: Dict[str, int] = {}
+        self._fault_streak: Dict[AlertKey, int] = {}  # +n consecutive faulty polls, -n consecutive clean polls
         self._task: Optional[asyncio.Task] = None
 
     def get_config(self) -> dict:
@@ -42,6 +46,7 @@ class AlertEngine:
             "alerts_enabled": self.alerts_enabled,
             "poll_interval_s": self.poll_interval_s,
             "sustained_breach_minutes": self.sustained_breach_minutes,
+            "door_sustained_minutes": self.door_sustained_minutes,
             "offline_alert_after_s": self.offline_alert_after_s,
             "forecast_alerts_enabled": self.forecast_alerts_enabled,
             "forecast_warning_minutes": self.forecast_warning_minutes,
@@ -60,6 +65,9 @@ class AlertEngine:
             self.notifier.enabled = bool(kwargs["email_alerts_enabled"])
         if "sustained_breach_minutes" in kwargs and kwargs["sustained_breach_minutes"] is not None:
             self.sustained_breach_minutes = float(kwargs["sustained_breach_minutes"])
+        for name in ("door_sustained_minutes", "forecast_warning_minutes"):
+            if kwargs.get(name) is not None:
+                setattr(self, name, float(kwargs[name]))
         if "offline_alert_after_s" in kwargs and kwargs["offline_alert_after_s"] is not None:
             self.offline_alert_after_s = int(kwargs["offline_alert_after_s"])
         return self.get_config()
@@ -153,7 +161,8 @@ class AlertEngine:
         emitted: List[dict] = []
 
         live_stamps = self.influx.get_latest_live_timestamps()
-        window_min = max(30.0, self.sustained_breach_minutes + 15.0)
+        failed = self.influx.get_failed_nodes()
+        window_min = max(30.0, max(self.sustained_breach_minutes, self.door_sustained_minutes) + 15.0)
         start = now - timedelta(minutes=window_min)
 
         for zone in self.site_config["zones"]:
@@ -251,7 +260,20 @@ class AlertEngine:
 
             # Fetch live zone average series for Rules 1 & 3
             raw_rows = self.influx.get_raw_readings(zone_id, start, now)
-            points = zone_average_live_series(raw_rows, start, now)
+            door_ids = {n["node_id"] for n in zone["nodes"] if n.get("is_door")}
+            # Broken (ok=false) or erratic sensors are left out of the zone average too, like door nodes (Rule 4 alerts them).
+            silent = {n["node_id"] for n in off["offline_nodes"]}  # offline nodes belong to Rule 2
+            faulty = {}
+            for node in zone["nodes"]:
+                nid = node["node_id"]
+                if nid in silent:
+                    continue
+                if nid in failed:
+                    faulty[nid] = "reports a sensor failure (ok=false)"
+                elif erratic([r for r in raw_rows if r.get("node_id") == nid and not is_backfill(r)], now):
+                    faulty[nid] = "has erratic readings (large jumps between samples)"
+            points = zone_average_live_series(
+                [r for r in raw_rows if r.get("node_id") not in door_ids | faulty.keys()], start, now)
 
             # --- Rule 1: Sustained limit breach (zone average, >=10 min) ---
             breach = evaluate_sustained_breach(
@@ -314,9 +336,82 @@ class AlertEngine:
                 if ev:
                     emitted.append(ev)
 
-            # --- Rule 3: Forecast early warning (<=20 min, own toggle, 2-cycle debounce) ---
             breach_active = breach_key in self._active
-            fc = evaluate_forecast_warning(
+
+            # --- Rule 1b: per-node sustained breach (door nodes wait longer). Zone breach supersedes: one email, not N+1. ---
+            for node in zone["nodes"]:
+                nid = node["node_id"]
+                nb_key: AlertKey = (zone_id, nid, "node_breach")
+                if breach_active:
+                    self._resolve(nb_key, now, f"Superseded by zone breach for {zone_name}.",
+                                  zone_name=zone_name, node_name=node.get("name"), send_email=False)
+                    continue
+                nb = evaluate_sustained_breach(
+                    zone_average_live_series([r for r in raw_rows if r.get("node_id") == nid], start, now),
+                    now,
+                    limits,
+                    sustained_minutes=self.door_sustained_minutes if node.get("is_door") else self.sustained_breach_minutes,
+                    stale_after_s=self.offline_alert_after_s,
+                )
+                if nb["triggered"]:
+                    side = "below lower limit" if nb["direction"] == "below_min" else "above upper limit"
+                    ev = self._trigger(
+                        nb_key,
+                        {
+                            "timestamp": now,
+                            "zone_id": zone_id,
+                            "zone_name": zone_name,
+                            "node_id": nid,
+                            "node_name": node.get("name"),
+                            "alert_type": "node_breach",
+                            "severity": "CRITICAL",
+                            "state": "ALERTING",
+                            "message": (
+                                f"{node.get('name', nid)} ({nid}) in {zone_name} ({nb['current_temp_c']:.2f} °C) "
+                                f"has been {side} ({nb['limit_c']:.1f} °C) for {nb['observed_minutes']:.1f} minutes."
+                            ),
+                            "temp_c": nb["current_temp_c"],
+                            "limit_c": nb["limit_c"],
+                            "peak_c": nb["peak_c"],
+                            "duration_minutes": nb["observed_minutes"],
+                        },
+                        started_at=nb["started_at"] or now,
+                    )
+                    if ev:
+                        emitted.append(ev)
+                elif nb["recovered"]:
+                    ev = self._resolve(
+                        nb_key, now,
+                        f"{node.get('name', nid)} ({nid}) is back within limits ({nb['current_temp_c']:.2f} °C).",
+                        zone_name=zone_name, node_name=node.get("name"), temp_c=nb["current_temp_c"],
+                    )
+                    if ev:
+                        emitted.append(ev)
+
+            # --- Rule 4: sensor fault (node alive but ok=false, or erratic readings). Offline nodes belong to Rule 2.
+            # Opens and closes only after 2 consecutive polls, so one glitch does not email. ---
+            for node in zone["nodes"]:
+                nid, label = node["node_id"], node.get("name", node["node_id"])
+                if nid in silent:
+                    continue
+                why = faulty.get(nid)
+                f_key: AlertKey = (zone_id, nid, "sensor_fault")
+                prev = self._fault_streak.get(f_key, 0)
+                streak = self._fault_streak[f_key] = max(prev, 0) + 1 if why else min(prev, 0) - 1
+                ev = None
+                if why and streak >= 2:
+                    ev = self._trigger(f_key, {
+                        "timestamp": now, "zone_id": zone_id, "zone_name": zone_name, "node_id": nid,
+                        "node_name": node.get("name"), "alert_type": "sensor_fault", "severity": "WARNING",
+                        "state": "ALERTING", "message": f"Check sensor: {label} ({nid}) in {zone_name} {why}."})
+                elif not why and streak <= -2:
+                    ev = self._resolve(f_key, now, f"Sensor {label} ({nid}) in {zone_name} is working normally again.",
+                                       zone_name=zone_name, node_name=node.get("name"))
+                if ev:
+                    emitted.append(ev)
+
+            # --- Rule 3: Forecast early warning (<=20 min, own toggle, 2-cycle debounce) ---
+            fc =evaluate_forecast_warning(
                 points,
                 now,
                 limits,

@@ -3,6 +3,8 @@ from datetime import timedelta
 from math import isfinite
 from statistics import median
 
+from config import settings
+
 
 def clean_points(rows, start, end):
     # Collapse retransmissions deterministically; conflicting duplicates are unusable.
@@ -39,8 +41,9 @@ def rate_per_min(points):
 
 
 def forecast(rows, now, limit):
-    points = clean_points(rows, now-timedelta(minutes=10), now)
-    result = {"status": "unavailable", "reason": coverage(points, now, 10),
+    window = settings.FORECAST_WINDOW_MIN
+    points = clean_points(rows, now-timedelta(minutes=window), now)
+    result = {"status": "unavailable", "reason": coverage(points, now, window),
               "limit_c": limit, "sample_count": len(points),
               "rate_c_per_minute": None, "rate_c_per_hour": None,
               "minutes_to_limit": None, "early_warning": False}
@@ -54,8 +57,19 @@ def forecast(rows, now, limit):
         eta = 0.0
     result.update(status="breached" if breached else "warming" if slope > 1e-9 else "not_rising",
                   current_temp_c=current, rate_c_per_minute=slope, rate_c_per_hour=slope*60,
-                  minutes_to_limit=eta, early_warning=not breached and eta is not None and eta <= 20)
+                  minutes_to_limit=eta, early_warning=not breached and eta is not None and eta <= settings.FORECAST_WARNING_MINUTES)
     return result
+
+
+def erratic(rows, now):
+    """True when readings jump around: median |step| between samples > ERRATIC_JUMP_C over the window.
+    Median, so one door-opening spike (a single up and down step) is not mistaken for a faulty sensor.
+    None if coverage is too thin."""
+    window = settings.ERRATIC_WINDOW_MIN
+    points = clean_points(rows, now-timedelta(minutes=window), now)
+    if coverage(points, now, window):
+        return None
+    return median(abs(b[1]-a[1]) for a, b in zip(points, points[1:])) > settings.ERRATIC_JUMP_C
 
 
 def sensor_health(rows, now, baseline_offsets):
@@ -65,16 +79,17 @@ def sensor_health(rows, now, baseline_offsets):
         groups.setdefault(identity, []).append(row)
     results = []
     for identity, readings in sorted(groups.items()):
-        recent = clean_points(readings, now-timedelta(minutes=15), now)
-        reason = coverage(recent, now, 15)
+        recent = clean_points(readings, now-timedelta(minutes=settings.FLATLINE_WINDOW_MIN), now)
+        reason = coverage(recent, now, settings.FLATLINE_WINDOW_MIN)
         flatline = None if reason else max(v for _,v in recent)-min(v for _,v in recent) < 0.05
         drift, drift_reason = None, "individual_sensor_ids_and_baselines_required"
         if identity != "zone_aggregate" and identity in baseline_offsets:
-            own = clean_points(readings, now-timedelta(hours=6), now)
-            drift_reason = coverage(own, now, 360)
+            drift_start = now-timedelta(minutes=settings.DRIFT_WINDOW_MIN)
+            own = clean_points(readings, drift_start, now)
+            drift_reason = coverage(own, now, settings.DRIFT_WINDOW_MIN)
             if not drift_reason:
                 deviations = []
-                peers = {key: clean_points(value, now-timedelta(hours=6), now)
+                peers = {key: clean_points(value, drift_start, now)
                          for key,value in groups.items() if key != identity and key in baseline_offsets}
                 # Match within 30 seconds; do not compare unrelated sampling times.
                 indexes = {key: 0 for key in peers}
@@ -89,12 +104,13 @@ def sensor_health(rows, now, baseline_offsets):
                             matches.append(points[i][1]-baseline_offsets[key])
                     if matches:
                         deviations.append((stamp, temp-baseline_offsets[identity]-median(matches)))
-                drift_reason = coverage(deviations, now, 360)
+                drift_reason = coverage(deviations, now, settings.DRIFT_WINDOW_MIN)
                 if not drift_reason:
                     drift = all(value > 1 for _,value in deviations) or all(value < -1 for _,value in deviations)
         results.append({"sensor_id": identity, "scope": "zone" if identity == "zone_aggregate" else "sensor",
                         "flatline_suspected": flatline, "flatline_reason": reason,
                         "drift_suspected": drift, "drift_reason": drift_reason,
+                        "erratic_suspected": erratic(readings, now),
                         "note": "Flags indicate suspected anomalies, not confirmed sensor failure."})
     return results
 
