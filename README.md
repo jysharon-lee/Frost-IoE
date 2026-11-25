@@ -47,13 +47,28 @@ Open http://localhost:5173. API docs are at http://localhost:8000/docs.
 
 Each client's zones, nodes and limits live in one file, `backend/sites/<client>.json`, chosen with `SITE_CONFIG=sites/<client>.json` in `backend/.env`. Copy `sites/demo.json` and edit it. Zone and node IDs must match the tags the firmware writes. The dashboard builds itself from that file; see `Software_Architecture.md` section 4.
 
-## Mock vs live data
+## Mock vs live (MCU) data
 
-The backend uses mock data by default, so it runs without a database. For live data, create `backend/.env`:
+Switch by editing `backend/.env`, then **restart the backend** (settings are read once at startup). `.env` is gitignored. Never commit the token.
+
+**Mock data** (no hardware, no database): scripted 4-zone demo.
+
+```
+USE_MOCK_DATA=true
+SITE_CONFIG=sites/demo.json
+```
+
+For a faster alert demo (~35 min), append the lines from `backend/.env.demo`.
+
+**MCU data** (Pico W writing to InfluxDB):
 
 ```
 USE_MOCK_DATA=false
 INFLUX_TOKEN=your-influxdb-token
+SITE_CONFIG=sites/demo.hw.json
 ```
 
-`.env` is gitignored. Never commit the token.
+1. Fill in Wi-Fi and InfluxDB details in `FROST_IoE/secrets.h`.
+2. Set `NODE_ID` and `ZONE_ID` in `FROST_IoE/FROST_IoE.ino` to match a node in the site file.
+3. To also publish simulated nodes N02-N06, keep `SIM_ENABLED 1` (one board only) and put `normal.csv` in the SD card root. Otherwise set it to 0.
+4. Flash the board. Readings appear on the dashboard within ~10 s. Check `http://localhost:8000/health` shows `"mock_mode": false`.
