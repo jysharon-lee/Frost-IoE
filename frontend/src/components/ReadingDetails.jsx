@@ -9,13 +9,14 @@ import {
   TriangleAlert,
 } from "lucide-react";
 
-import AnalyticsPanel from "./AnalyticsPanel";
+import { SensorHealth, ZoneThermalForecast } from "./AnalyticsPanel";
 // Zone layout hidden for now; restore this import and the block below to bring it back.
 // import LocationCard from "./LocationCard";
 import MetricCard from "./MetricCard";
 import NodeCard from "./NodeCard";
 import TrendTag from "./TrendTag";
 import ZoneHistoryCharts from "./ZoneHistoryCharts";
+import useZoneAnalytics from "../hooks/useZoneAnalytics";
 
 import {
   downloadCSV,
@@ -46,14 +47,15 @@ export default function ReadingDetails({
 }) {
   const [exportView, setExportView] = useState("average");
 
+  const { forecast, health, forecastError, healthError, loading } =
+    useZoneAnalytics(zone.zone_id, upperLimit, !isDemo && !node, refreshKey);
+
   const summary = getZoneSummary(zone, now);
   const current = node || summary;
 
   // Zone view with per-node data: mean, warmest node and node cards.
   const hasNodes = !node && zone.nodes?.length > 0;
-  const worst = hasNodes
-    ? getWorstNode(zone.nodes, now)
-    : null;
+  const worst = hasNodes ? getWorstNode(zone.nodes, now) : null;
 
   const readings = isDemo
     ? node
@@ -113,9 +115,7 @@ export default function ReadingDetails({
       const time =
         typeof reading.time === "number"
           ? reading.time
-          : new Date(
-              reading.timestamp ?? reading.time
-            ).getTime();
+          : new Date(reading.timestamp ?? reading.time).getTime();
 
       return time >= start && time <= end;
     });
@@ -150,10 +150,7 @@ export default function ReadingDetails({
             <>
               {hasNodes
                 ? `${summary.reporting} / ${summary.total} sensors reporting`
-                : getTemperatureStatus(
-                    current.temp_c,
-                    zone.limits
-                  )}{" "}
+                : getTemperatureStatus(current.temp_c, zone.limits)}{" "}
               <TrendTag rate={current.rate_c_per_hour} />
             </>
           }
@@ -190,9 +187,7 @@ export default function ReadingDetails({
 
         {!hasNodes && (
           <MetricCard
-            title={
-              node ? "Reading freshness" : "Reporting nodes"
-            }
+            title={node ? "Reading freshness" : "Reporting nodes"}
             value={
               node
                 ? isFresh(node, now)
@@ -238,26 +233,34 @@ export default function ReadingDetails({
       )}
 
       <div className="detail-grid">
-        <ZoneHistoryCharts
-          key={`${isDemo}:${zone.zone_id}:${
-            node?.node_id || "overview"
-          }`}
-          zone={zone}
-          node={node}
-          isDemo={isDemo}
-          readings={readings}
-          hours={hours}
-          onHoursChange={onHoursChange}
-          historyLoading={historyLoading}
-          historyError={historyError}
-        />
+        <div className="detail-main">
+          <ZoneHistoryCharts
+            key={`${isDemo}:${zone.zone_id}:${node?.node_id || "overview"}`}
+            zone={zone}
+            node={node}
+            isDemo={isDemo}
+            readings={readings}
+            hours={hours}
+            onHoursChange={onHoursChange}
+            historyLoading={historyLoading}
+            historyError={historyError}
+          />
+
+          {!node && (
+            <div className="sensor-health-below-chart">
+              <SensorHealth
+                isDemo={isDemo}
+                health={health}
+                healthError={healthError}
+              />
+            </div>
+          )}
+        </div>
 
         <div className="detail-sidebar">
           {/* Zone layout hidden for now.
           <LocationCard
-            key={`${isDemo}:${zone.zone_id}:${
-              node?.node_id || "overview"
-            }`}
+            key={`${isDemo}:${zone.zone_id}:${node?.node_id || "overview"}`}
             zone={zone}
             node={node}
             isDemo={isDemo}
@@ -267,12 +270,13 @@ export default function ReadingDetails({
           */}
 
           {!node && (
-            <AnalyticsPanel
-              zone={zone}
+            <ZoneThermalForecast
               isDemo={isDemo}
               limit={upperLimit}
               onLimitChange={onLimitChange}
-              refreshKey={refreshKey}
+              forecast={forecast}
+              forecastError={forecastError}
+              loading={loading}
             />
           )}
 
@@ -298,16 +302,10 @@ export default function ReadingDetails({
               <p>No current breaches.</p>
             ) : (
               relevantBreaches.map((entry) => (
-                <div
-                  key={entry.node.node_id}
-                  className="notice danger"
-                >
+                <div key={entry.node.node_id} className="notice danger">
                   {entry.node.name}:{" "}
                   {formatValue(entry.node.temp_c, "°C")} ·{" "}
-                  {getTemperatureStatus(
-                    entry.node.temp_c,
-                    zone.limits
-                  )}
+                  {getTemperatureStatus(entry.node.temp_c, zone.limits)}
                 </div>
               ))
             )}
@@ -321,18 +319,11 @@ export default function ReadingDetails({
                 Readings
                 <select
                   value={exportView}
-                  onChange={(event) =>
-                    setExportView(event.target.value)
-                  }
+                  onChange={(event) => setExportView(event.target.value)}
                 >
-                  <option value="average">
-                    Zone average
-                  </option>
+                  <option value="average">Zone average</option>
 
-                  <option
-                    value="nodes"
-                    disabled={!isDemo}
-                  >
+                  <option value="nodes" disabled={!isDemo}>
                     Individual node readings
                     {!isDemo ? " — unavailable" : ""}
                   </option>
@@ -346,9 +337,7 @@ export default function ReadingDetails({
               onClick={exportHistory}
               disabled={
                 readings.length === 0 ||
-                (!isDemo &&
-                  !node &&
-                  exportView === "nodes")
+                (!isDemo && !node && exportView === "nodes")
               }
             >
               <Download size={17} aria-hidden="true" />
