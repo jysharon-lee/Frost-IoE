@@ -228,6 +228,43 @@ nav button:hover {
   background: #fff2d9;
 }
 
+.badge.blue {
+  color: #1e40af;
+  background: #dbeafe;
+}
+
+/* Sidebar zone status dot, same colours as the overview badges */
+.zone-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.zone-dot.red { background: #e5384f; }
+.zone-dot.amber { background: #e59a14; }
+.zone-dot.blue { background: #3b82f6; }
+
+.badge .zone-dot {
+  display: inline-block;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.overview-page .zone-card > .badge + .badge {
+  margin-left: 6px;
+}
+
+.alert-row.offline {
+  color: #936519;
+  background: #fff8e8;
+}
+
+.alert-row.cold {
+  color: #1e40af;
+  background: #eff6ff;
+}
+
 /* Metric cards */
 .metric-grid {
   display: grid;
@@ -312,6 +349,87 @@ nav button:hover {
 .panel-heading > span {
   color: #7d90a0;
   font-size: 10px;
+}
+
+/* Collapsible panels: closed by default, current state stays visible in the header */
+:root {
+  interpolate-size: allow-keywords; /* lets height animate to auto */
+}
+
+.panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+  cursor: pointer;
+  transition: margin-bottom 200ms ease;
+}
+
+/* Open/close slide and fade. Browsers without ::details-content just toggle instantly. */
+.panel::details-content {
+  height: 0;
+  opacity: 0;
+  overflow: clip;
+  transition:
+    height 200ms ease,
+    opacity 200ms ease,
+    content-visibility 200ms allow-discrete;
+}
+
+.panel[open]::details-content {
+  height: auto;
+  opacity: 1;
+}
+
+.panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.panel > summary h3 {
+  margin: 0;
+}
+
+.panel > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border: solid #7b8e9e;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+  transition: transform 200ms ease;
+}
+
+.panel[open] > summary {
+  margin-bottom: 16px;
+}
+
+.panel[open] > summary::after {
+  transform: rotate(225deg);
+}
+
+.panel > summary:focus-visible {
+  outline: 2px solid #078c95;
+  outline-offset: 4px;
+  border-radius: 4px;
+}
+
+.summary-status {
+  margin-left: auto;
+  color: #7b8e9e;
+  font-size: 12px;
+}
+
+.summary-status.bad {
+  color: #ad354b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panel > summary,
+  .panel > summary::after,
+  .panel::details-content {
+    transition: none;
+  }
 }
 
 /* Zone cards */
@@ -423,6 +541,20 @@ nav button:hover {
   color: #718697;
   background: transparent;
   white-space: nowrap;
+}
+
+/* Offline sensor: small amber tag, same amber as the stale-reading state */
+.tab-down {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #936519;
+  background: #fff2d9;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .tabs button.selected {
@@ -725,8 +857,66 @@ footer {
   padding: 12px 0;
 }
 
+.health-result h4 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.health-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.health-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+}
+
+.health-check::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dot, #94a3b8);
+}
+
+.health-check span {
+  color: #7b8e9e;
+}
+
+.health-check.ok {
+  --dot: #12b076;
+}
+
+.health-check.bad {
+  --dot: #e5384f;
+  background: #ffedf0;
+  color: #b9344b;
+}
+
+.health-check.bad span {
+  color: inherit;
+}
+
 .health-result small {
   overflow-wrap: anywhere;
+}
+
+.health-result .late-note {
+  display: block;
+  margin-top: 8px;
+  color: #64748b;
 }
 
 /* Overview metric columns */
@@ -1020,6 +1210,7 @@ footer {
 /* --dot lives on the card so the status pill and the card's edge stripe share it */
 .compact-node-card.normal { --dot: #12b076; }
 .compact-node-card.breach { --dot: #e5384f; }
+.compact-node-card.cold { --dot: #3b82f6; }
 .compact-node-card.stale { --dot: #e59a14; }
 .compact-node-card.unavailable { --dot: #94a3b8; }
 
@@ -1031,6 +1222,11 @@ footer {
 .compact-node-status.breach {
   background: #ffdbe2;
   color: #a8203a;
+}
+
+.compact-node-status.cold {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
 .compact-node-status.stale {

@@ -7,8 +7,11 @@ import {
   Warehouse,
 } from "lucide-react";
 
+import { getLimitState } from "../utils/data";
+
 export default function Sidebar({
   zones,
+  now,
   page,
   onNavigate,
 }) {
@@ -40,21 +43,34 @@ export default function Sidebar({
           Overview
         </button>
 
-        {zones.map((zone) => (
-          <button
-            key={zone.zone_id}
-            className={
-              page === zone.zone_id ? "active" : ""
-            }
-            onClick={() => onNavigate(zone.zone_id)}
-          >
-            <Warehouse size={19} />
+        {zones.map((zone) => {
+          const { tone, outside, total } = getLimitState(zone, now);
 
-            <span>{zone.name}</span>
+          return (
+            <button
+              key={zone.zone_id}
+              className={
+                page === zone.zone_id ? "active" : ""
+              }
+              onClick={() => onNavigate(zone.zone_id)}
+            >
+              <Warehouse size={19} />
 
-            <ChevronRight size={16} />
-          </button>
-        ))}
+              <span>{zone.name}</span>
+
+              {tone && (
+                <i
+                  className={`zone-dot ${tone}`}
+                  role="img"
+                  aria-label={`${outside} of ${total} nodes outside limits`}
+                  title={`${outside} of ${total} nodes outside limits`}
+                />
+              )}
+
+              <ChevronRight size={16} />
+            </button>
+          );
+        })}
 
         <button
           className={

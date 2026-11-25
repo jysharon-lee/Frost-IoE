@@ -11,12 +11,10 @@ const reason = (value) =>
     ? value.replaceAll("_", " ")
     : "No result available";
 
-const flag = (value) =>
-  value === true
-    ? "Suspected anomaly"
-    : value === false
-      ? "Not detected"
-      : "Unavailable";
+const checkState = (value) =>
+  value === true ? "bad" : value === false ? "ok" : "na";
+
+const stateText = { bad: "suspected", ok: "clear", na: "n/a" };
 
 export default function AnalyticsPanel({
   zone,
@@ -41,10 +39,52 @@ export default function AnalyticsPanel({
   const available =
     forecast && forecast.status !== "unavailable";
 
+  // One-line states for the collapsed headers, so problems stay visible without opening a card.
+  const forecastBad =
+    forecast?.status === "breached" || forecast?.early_warning;
+
+  const forecastStatus = isDemo
+    ? ""
+    : forecastError || (forecast && !available)
+      ? "Unavailable"
+      : !forecast
+        ? loading ? "Loading…" : ""
+        : forecast.status === "breached"
+          ? "Above limit"
+          : forecast.early_warning
+            ? "Early warning"
+            : forecast.status === "warming"
+              ? "Warming"
+              : "Not rising";
+
+  const suspected = (health?.sensors || []).filter(
+    (sensor) =>
+      sensor.flatline_suspected === true ||
+      sensor.drift_suspected === true ||
+      sensor.erratic_suspected === true
+  ).length;
+
+  const healthStatus = isDemo
+    ? "Demo mode"
+    : healthError
+      ? "Unavailable"
+      : !health
+        ? ""
+        : suspected
+          ? `${suspected} suspected`
+          : "None suspected";
+
   return (
     <>
-      <section className="panel analytics-panel">
-        <h3>Zone thermal forecast</h3>
+      <details className="panel analytics-panel">
+        <summary>
+          <h3>Zone thermal forecast</h3>
+          <span
+            className={`summary-status${forecastBad ? " bad" : ""}`}
+          >
+            {forecastStatus}
+          </span>
+        </summary>
 
         <label>
           Select upper temperature limit (°C)
@@ -134,10 +174,17 @@ export default function AnalyticsPanel({
         <p className="muted">
           10-minute trend · 20-minute warning window
         </p>
-      </section>
+      </details>
 
-      <section className="panel analytics-panel">
-        <h3>Sensor health</h3>
+      <details className="panel analytics-panel">
+        <summary>
+          <h3>Sensor health</h3>
+          <span
+            className={`summary-status${suspected ? " bad" : ""}`}
+          >
+            {healthStatus}
+          </span>
+        </summary>
 
         {isDemo ? (
           <p>Diagnostics unavailable in demo mode.</p>
@@ -164,35 +211,34 @@ export default function AnalyticsPanel({
                     : sensor.sensor_id}
                 </h4>
 
-                <p
-                  className={
-                    sensor.flatline_suspected === true
-                      ? "notice danger"
-                      : ""
-                  }
-                >
-                  Flatline: {flag(sensor.flatline_suspected)}
-                </p>
+                <ul className="health-checks">
+                  {[
+                    ["Flatline", sensor.flatline_suspected, sensor.flatline_reason],
+                    ["Drift", sensor.drift_suspected, sensor.drift_reason],
+                    ["Erratic", sensor.erratic_suspected, null],
+                  ].map(([name, value, why]) => {
+                    const state = checkState(value);
 
-                {sensor.flatline_suspected == null && (
-                  <small>
-                    {reason(sensor.flatline_reason)}
-                  </small>
-                )}
+                    return (
+                      <li
+                        key={name}
+                        className={`health-check ${state}`}
+                        // Why a check could not run is in the tooltip, not on screen.
+                        title={state === "na" && why ? reason(why) : undefined}
+                      >
+                        {name} <span>{stateText[state]}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
 
-                <p
-                  className={
-                    sensor.drift_suspected === true
-                      ? "notice danger"
-                      : ""
-                  }
-                >
-                  Drift: {flag(sensor.drift_suspected)}
-                </p>
-
-                {sensor.drift_suspected == null && (
-                  <small>
-                    {reason(sensor.drift_reason)}
+                {sensor.uploaded_later > 0 && (
+                  <small className="late-note">
+                    {sensor.uploaded_later}{" "}
+                    {sensor.uploaded_later === 1 ? "reading" : "readings"}{" "}
+                    logged on the board and uploaded after an outage,{" "}
+                    {formatDateTime(sensor.uploaded_later_from)} to{" "}
+                    {formatDateTime(sensor.uploaded_later_to)}
                   </small>
                 )}
               </div>
@@ -209,7 +255,7 @@ export default function AnalyticsPanel({
         <p className="muted">
           Flags indicate suspected sensor issues.
         </p>
-      </section>
+      </details>
     </>
   );
 }

@@ -1,7 +1,45 @@
 import { useEffect, useState } from "react";
 
-import { getLiveZones, getSite, getZoneTrend } from "../api";
+import { getJSON, getLiveZones, getSite, getZoneTrend } from "../api";
 import { createDemoZones } from "../utils/data";
+
+/* Sensors with an open sensor_fault alert (failing or erratic), as "zone/node" keys. */
+
+export function useFaultySensors(mode, refreshKey) {
+  const [faulty, setFaulty] = useState(new Set());
+
+  useEffect(() => {
+    if (mode !== "api") {
+      setFaulty(new Set());
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const load = () =>
+      getJSON("/api/alerts/active", controller.signal)
+        .then((data) =>
+          setFaulty(
+            new Set(
+              data.alerts
+                .filter((a) => a.alert_type === "sensor_fault")
+                .map((a) => `${a.zone_id}/${a.node_id}`)
+            )
+          )
+        )
+        .catch(() => {});
+
+    load();
+    const timer = setInterval(load, 15_000);
+
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [mode, refreshKey]);
+
+  return faulty;
+}
 
 /* Client site config, loaded once. Null if the backend is unreachable. */
 
@@ -94,7 +132,8 @@ export function useZoneHistory(
   mode,
   zoneId,
   hours,
-  refreshKey
+  refreshKey,
+  nodeId = null
 ) {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -121,7 +160,8 @@ export function useZoneHistory(
         const readings = await getZoneTrend(
           zoneId,
           hours,
-          controller.signal
+          controller.signal,
+          nodeId
         );
 
         if (!cancelled) {
@@ -151,7 +191,7 @@ export function useZoneHistory(
       controller.abort();
       clearTimeout(timer);
     };
-  }, [mode, zoneId, hours, refreshKey]);
+  }, [mode, zoneId, hours, refreshKey, nodeId]);
 
   return {
     history,

@@ -152,6 +152,15 @@ class AlertEngine:
         }
         return self._emit(event, send_email=send_email)
 
+    def _late_note(self, zone_id: str, since: datetime, now: datetime, node_id: Optional[str] = None) -> str:
+        """Tail for a back-online message: readings the board logged during the outage and uploaded on reconnect."""
+        try:
+            n = sum(1 for r in self.influx.get_raw_readings(zone_id, since, now)
+                    if is_backfill(r) and node_id in (None, r.get("node_id")))
+        except Exception:
+            return ""
+        return f" {n} reading{'s' if n != 1 else ''} logged on the board during the outage {'were' if n != 1 else 'was'} recovered." if n else ""
+
     def evaluate_once(self, now: Optional[datetime] = None) -> List[dict]:
         """Run one evaluation pass across all configured zones. Returns newly emitted events."""
         if not self.alerts_enabled:
@@ -211,7 +220,8 @@ class AlertEngine:
                     ev = self._resolve(
                         zone_off_key,
                         now,
-                        f"{zone_name} is back online ({len(off['online_nodes'])}/{len(zone['nodes'])} nodes reporting).",
+                        f"{zone_name} is back online ({len(off['online_nodes'])}/{len(zone['nodes'])} nodes reporting)."
+                        + self._late_note(zone_id, self._active[zone_off_key]["started_at"], now),
                         zone_name=zone_name,
                     )
                     if ev:
@@ -246,7 +256,8 @@ class AlertEngine:
                         ev = self._resolve(
                             n_key,
                             now,
-                            f"Node {node_info['name']} ({node_info['node_id']}) in {zone_name} is back online.",
+                            f"Node {node_info['name']} ({node_info['node_id']}) in {zone_name} is back online."
+                            + self._late_note(zone_id, self._active[n_key]["started_at"], now, node_info["node_id"]),
                             zone_name=zone_name,
                             node_name=node_info["name"],
                         )

@@ -3,6 +3,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -28,6 +29,25 @@ const COLOURS = [
   "#92400e", // Brown
 ];
 
+/* Runs of 5-minute windows holding readings uploaded after an outage. */
+function lateBands(data, window = 300_000) {
+  const bands = [];
+
+  for (const point of data) {
+    if (!point.uploaded_later) continue;
+
+    const last = bands.at(-1);
+
+    if (last && point.time - window <= last.x2) {
+      last.x2 = point.time;
+    } else {
+      bands.push({ x1: point.time - window, x2: point.time });
+    }
+  }
+
+  return bands;
+}
+
 export default function HistoryChart({
   title,
   data,
@@ -35,6 +55,8 @@ export default function HistoryChart({
   limits,
   nodes,
 }) {
+  const bands = lateBands(data);
+
   return (
     <section className="panel">
       <div className="panel-heading">
@@ -100,6 +122,17 @@ export default function HistoryChart({
                   name,
                 ]}
               />
+
+              {bands.map((band) => (
+                <ReferenceArea
+                  key={band.x1}
+                  x1={band.x1}
+                  x2={band.x2}
+                  fill="#64748b"
+                  fillOpacity={0.12}
+                  stroke="none"
+                />
+              ))}
 
               {!humidity && isNumber(limits?.max) && (
                 <ReferenceLine
@@ -168,6 +201,12 @@ export default function HistoryChart({
             </LineChart>
           </ResponsiveContainer>
         </div>
+      )}
+
+      {bands.length > 0 && (
+        <p className="muted">
+          Shaded: readings uploaded after an outage
+        </p>
       )}
     </section>
   );

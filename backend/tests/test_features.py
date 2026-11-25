@@ -41,6 +41,14 @@ class AnalyticsTests(unittest.TestCase):
         rows += [{"timestamp": NOW,"temp_c":99}]
         self.assertEqual(len(clean_points(rows,NOW-timedelta(minutes=10),NOW)),10)
 
+    def test_uploaded_later_count(self):
+        rows=series(10,sensor="N01")
+        for r in rows[2:5]: r["source"]="BACKFILL"
+        item=sensor_health(rows,NOW,{})[0]
+        self.assertEqual(item["uploaded_later"],3)
+        self.assertEqual(item["uploaded_later_from"],rows[2]["timestamp"])
+        self.assertEqual(sensor_health(series(10,sensor="N01"),NOW,{})[0]["uploaded_later"],0)
+
     def test_flatline_and_missing_identity(self):
         item=sensor_health(series(),NOW,{})[0]
         self.assertTrue(item["flatline_suspected"])

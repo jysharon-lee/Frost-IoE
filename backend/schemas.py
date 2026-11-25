@@ -47,6 +47,7 @@ class TrendPoint(BaseModel):
     timestamp: datetime
     temp_c: Optional[float] = None
     humidity: Optional[float] = None
+    uploaded_later: bool = False  # window holds readings logged on the board during an outage
 
 class ZoneTrendResponse(BaseModel):
     zone_id: str

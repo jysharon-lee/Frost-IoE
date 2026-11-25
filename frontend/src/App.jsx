@@ -11,6 +11,7 @@ import ZonePage from "./pages/ZonePage";
 
 import {
   useCurrentTime,
+  useFaultySensors,
   useLiveZones,
   useSite,
   useZoneHistory,
@@ -19,6 +20,7 @@ import {
 import {
   getOutages,
   getTemperatureStatus,
+  isDown,
   isFresh,
   isNumber,
 } from "./utils/data";
@@ -53,6 +55,7 @@ export default function App() {
 
   const live = useLiveZones(mode, hours, refreshKey);
   const site = useSite();
+  const faulty = useFaultySensors(mode, refreshKey);
   const outages = getOutages(live.zones, now);
 
   const rawZone = live.zones.find(
@@ -79,28 +82,27 @@ export default function App() {
     mode,
     zone?.zone_id,
     hours,
-    refreshKey
+    refreshKey,
+    node?.node_id
   );
 
-  /* Current demo node breaches */
-  const breaches = isDemo
-    ? live.zones.flatMap((item) =>
-        item.nodes
-          .filter(
-            (sensor) =>
-              isFresh(sensor, now) &&
-              isNumber(sensor.temp_c) &&
-              getTemperatureStatus(
-                sensor.temp_c,
-                item.limits
-              ) !== "Within limits"
-          )
-          .map((sensor) => ({
-            zone: item,
-            node: sensor,
-          }))
+  /* Nodes currently outside their zone limits */
+  const breaches = live.zones.flatMap((item) =>
+    item.nodes
+      .filter(
+        (sensor) =>
+          isFresh(sensor, now) &&
+          isNumber(sensor.temp_c) &&
+          getTemperatureStatus(
+            sensor.temp_c,
+            item.limits
+          ) !== "Within limits"
       )
-    : [];
+      .map((sensor) => ({
+        zone: item,
+        node: sensor,
+      }))
+  );
 
   /* Navigation handlers */
   function navigate(nextPage) {
@@ -147,6 +149,7 @@ export default function App() {
     <div className="app">
       <Sidebar
         zones={live.zones}
+        now={now}
         page={page}
         onNavigate={navigate}
       />
@@ -200,6 +203,7 @@ export default function App() {
             zones={live.zones}
             isDemo={isDemo}
             breaches={breaches}
+            faulty={faulty}
             now={now}
             onOpenZone={navigate}
             onOpenNode={openNode}
@@ -229,24 +233,44 @@ export default function App() {
                 Overview
               </button>
 
-              {zone.nodes.map((sensor) => (
-                <button
-                  key={sensor.node_id}
-                  className={
-                    selectedNode === sensor.node_id
-                      ? "selected"
-                      : ""
-                  }
-                  aria-pressed={
-                    selectedNode === sensor.node_id
-                  }
-                  onClick={() =>
-                    setSelectedNode(sensor.node_id)
-                  }
-                >
-                  {sensor.name}
-                </button>
-              ))}
+              {zone.nodes.map((sensor) => {
+                const down = isDown(sensor, now);
+                const check =
+                  !down &&
+                  faulty.has(`${zone.zone_id}/${sensor.node_id}`);
+
+                return (
+                  <button
+                    key={sensor.node_id}
+                    className={
+                      selectedNode === sensor.node_id
+                        ? "selected"
+                        : ""
+                    }
+                    aria-pressed={
+                      selectedNode === sensor.node_id
+                    }
+                    aria-label={
+                      down
+                        ? `${sensor.name}, offline`
+                        : check
+                          ? `${sensor.name}, check sensor`
+                          : undefined
+                    }
+                    onClick={() =>
+                      setSelectedNode(sensor.node_id)
+                    }
+                  >
+                    {sensor.name}
+
+                    {(down || check) && (
+                      <i className="tab-down">
+                        {down ? "Offline" : "Check sensor"}
+                      </i>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {node ? (

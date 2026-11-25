@@ -10,7 +10,8 @@ import {
 } from "lucide-react";
 
 import AnalyticsPanel from "./AnalyticsPanel";
-import LocationCard from "./LocationCard";
+// Zone layout hidden for now; restore this import and the block below to bring it back.
+// import LocationCard from "./LocationCard";
 import MetricCard from "./MetricCard";
 import NodeCard from "./NodeCard";
 import TrendTag from "./TrendTag";
@@ -65,6 +66,18 @@ export default function ReadingDetails({
       entry.zone.zone_id === zone.zone_id &&
       (!node || entry.node.node_id === node.node_id)
   );
+
+  // Shown in the collapsed card header so the state is visible without opening it.
+  const alertBad = isDemo
+    ? relevantBreaches.length > 0
+    : ["WARNING", "CRITICAL"].includes(zone.status);
+
+  const alertStatus = isDemo
+    ? relevantBreaches.length
+      ? `${relevantBreaches.length} outside limits`
+      : "None"
+    : { NORMAL: "Within limits", WARNING: "Warning", CRITICAL: "Critical" }[zone.status] ||
+      "Unavailable";
 
   function exportHistory() {
     let source;
@@ -240,6 +253,7 @@ export default function ReadingDetails({
         />
 
         <div className="detail-sidebar">
+          {/* Zone layout hidden for now.
           <LocationCard
             key={`${isDemo}:${zone.zone_id}:${
               node?.node_id || "overview"
@@ -250,6 +264,7 @@ export default function ReadingDetails({
             now={now}
             onSelectNode={onSelectNode}
           />
+          */}
 
           {!node && (
             <AnalyticsPanel
@@ -261,8 +276,13 @@ export default function ReadingDetails({
             />
           )}
 
-          <section className="panel">
-            <h3>Current limit alerts</h3>
+          <details className="panel">
+            <summary>
+              <h3>Current limit alerts</h3>
+              <span className={`summary-status${alertBad ? " bad" : ""}`}>
+                {alertStatus}
+              </span>
+            </summary>
 
             {!isDemo ? (
               <p>
@@ -291,7 +311,7 @@ export default function ReadingDetails({
                 </div>
               ))
             )}
-          </section>
+          </details>
 
           <section className="panel">
             <h3>Export readings</h3>

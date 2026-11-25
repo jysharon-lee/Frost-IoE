@@ -71,6 +71,27 @@ export function getTemperatureStatus(temperature, limits) {
   return "Within limits";
 }
 
+/* Zone limit state from its reporting nodes.
+   red = every node outside limits, blue = every node too cold, amber = only some outside. */
+export function getLimitState(zone, now = Date.now()) {
+  const states = (zone.nodes || [])
+    .filter((node) => isFresh(node, now) && isNumber(node.temp_c))
+    .map((node) => getTemperatureStatus(node.temp_c, zone.limits));
+
+  const below = states.filter((s) => s === "Below limit").length;
+  const outside = below + states.filter((s) => s === "Above limit").length;
+
+  const tone = !outside
+    ? ""
+    : outside < states.length
+      ? "amber"
+      : below === outside
+        ? "blue"
+        : "red";
+
+  return { tone, outside, total: states.length };
+}
+
 export function formatLimits(limits) {
   const hasMin = isNumber(limits?.min);
   const hasMax = isNumber(limits?.max);
@@ -92,10 +113,14 @@ export function getWorstNode(nodes, now = Date.now()) {
     );
 }
 
+/* A node that is silent or has no valid temperature */
+export function isDown(node, now = Date.now()) {
+  return !isFresh(node, now) || !isNumber(node.temp_c);
+}
+
 /* Outage messages: whole site, whole zone, or single sensor */
 export function getOutages(zones, now = Date.now()) {
-  const down = (node) =>
-    !isFresh(node, now) || !isNumber(node.temp_c);
+  const down = (node) => isDown(node, now);
 
   const zoneDown = (zone) =>
     zone.nodes?.length
@@ -370,6 +395,7 @@ export function downloadCSV(readings, filename) {
     "node_id",
     "temp_c",
     "humidity",
+    "uploaded_later", // true = window includes readings logged on the board during an outage
   ];
 
   const escape = (value) =>

@@ -107,7 +107,10 @@ def sensor_health(rows, now, baseline_offsets):
                 drift_reason = coverage(deviations, now, settings.DRIFT_WINDOW_MIN)
                 if not drift_reason:
                     drift = all(value > 1 for _,value in deviations) or all(value < -1 for _,value in deviations)
+        late = [r["timestamp"] for r in readings if r.get("source") == "BACKFILL"]
         results.append({"sensor_id": identity, "scope": "zone" if identity == "zone_aggregate" else "sensor",
+                        "uploaded_later": len(late),  # readings logged on the board during an outage
+                        "uploaded_later_from": min(late, default=None), "uploaded_later_to": max(late, default=None),
                         "flatline_suspected": flatline, "flatline_reason": reason,
                         "drift_suspected": drift, "drift_reason": drift_reason,
                         "erratic_suspected": erratic(readings, now),

@@ -21,9 +21,7 @@
       "nodes": [
         { "node_id": "N04", "name": "Sensor 4", "location": "Near door" },
         { "node_id": "N05", "name": "Sensor 5", "location": "Room centre" },
-        { "node_id": "N06", "name": "Sensor 6", "location": "Back wall" },
-        { "node_id": "N07", "name": "Sensor 7", "location": "Back wall" },
-        { "node_id": "N08", "name": "Sensor 8", "location": "Back wall" }
+        { "node_id": "N06", "name": "Sensor 6", "location": "Back wall" }
       ]
     }
   ]

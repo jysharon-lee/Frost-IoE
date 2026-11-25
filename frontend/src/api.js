@@ -59,9 +59,11 @@ export async function getLiveZones(signal) {
 
 /* Zone history */
 
-export async function getZoneTrend(zoneId, hours, signal) {
+/* With nodeId: that sensor's own history. Without: the zone average. */
+export async function getZoneTrend(zoneId, hours, signal, nodeId = null) {
+  const zone = `/api/zones/${encodeURIComponent(zoneId)}`;
   const response = await getJSON(
-    `/api/zones/${encodeURIComponent(zoneId)}/trend?hours=${hours}`,
+    `${zone}${nodeId ? `/nodes/${encodeURIComponent(nodeId)}` : ""}/trend?hours=${hours}`,
     signal
   );
 

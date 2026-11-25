@@ -12,20 +12,32 @@ import TrendTag from "../components/TrendTag";
 import {
   formatDateTime,
   formatValue,
+  getLimitState,
   getTemperatureStatus,
   getZoneSummary,
+  isDown,
   isFresh,
   FRESHNESS_LIMIT,
 } from "../utils/data";
 
 export default function OverviewPage({
   zones,
-  isDemo,
   breaches,
+  faulty,
   now,
   onOpenZone,
   onOpenNode,
 }) {
+  /* Offline sensors; a zone with every sensor down becomes one row. */
+  const offlineRows = zones.flatMap((zone) => {
+    const nodes = zone.nodes || [];
+    const down = nodes.filter((node) => isDown(node, now));
+
+    return nodes.length && down.length === nodes.length
+      ? [{ zone, node: nodes[0], label: "All sensors" }]
+      : down.map((node) => ({ zone, node, label: node.name }));
+  });
+
   return (
     <div className="overview-page">
       <div className="metric-grid overview-metrics">
@@ -48,12 +60,8 @@ export default function OverviewPage({
 
         <MetricCard
           title="Node limit breaches"
-          value={isDemo ? breaches.length : "—"}
-          description={
-            isDemo
-              ? "Based on individual nodes"
-              : "Node data unavailable"
-          }
+          value={breaches.length}
+          description="Based on individual nodes"
           icon={TriangleAlert}
         />
       </div>
@@ -71,18 +79,21 @@ export default function OverviewPage({
           const values = getZoneSummary(zone, now);
           const recent = isFresh(zone, now);
 
-          const count = breaches.filter(
-            (entry) =>
-              entry.zone.zone_id === zone.zone_id
+          const limit = getLimitState(zone, now);
+
+          const offline = (zone.nodes || []).filter((node) =>
+            isDown(node, now)
+          ).length;
+
+          const check = (zone.nodes || []).filter(
+            (node) =>
+              !isDown(node, now) &&
+              faulty.has(`${zone.zone_id}/${node.node_id}`)
           ).length;
 
           const tone = !recent
             ? "amber"
-            : isDemo
-              ? count > 0
-                ? "red"
-                : "green"
-              : "";
+            : limit.tone || "green";
 
           return (
             <button
@@ -111,13 +122,27 @@ export default function OverviewPage({
                 <TrendTag rate={values.rate_c_per_hour} />
               </div>
 
-              {(!recent || isDemo) && (
-                <Badge tone={tone}>
-                  {!recent
-                    ? "Stale reading"
-                    : count > 0
-                      ? `${count} node(s) outside limits`
+              <Badge tone={tone}>
+                {!recent
+                  ? "Stale reading"
+                  : limit.outside
+                    ? `${limit.outside} of ${limit.total} nodes outside limits`
+                    : offline
+                      ? "Reporting nodes within limits"
                       : "All nodes within limits"}
+              </Badge>
+
+              {recent && offline > 0 && (
+                <Badge tone="amber">
+                  <i className="zone-dot amber" />
+                  {offline} {offline === 1 ? "sensor" : "sensors"} offline
+                </Badge>
+              )}
+
+              {recent && check > 0 && (
+                <Badge tone="amber">
+                  <i className="zone-dot amber" />
+                  {check} {check === 1 ? "sensor" : "sensors"} to check
                 </Badge>
               )}
 
@@ -133,16 +158,46 @@ export default function OverviewPage({
       <section className="panel">
         <h3>Attention required</h3>
 
-        {!isDemo ? (
-          <p className="muted">
-            Alert history is not available from the current API.
-          </p>
-        ) : breaches.length === 0 ? (
-          <p>No current node breaches.</p>
-        ) : (
+        {breaches.length === 0 && offlineRows.length === 0 && (
+          <p>No current node breaches or offline sensors.</p>
+        )}
+
+        {offlineRows.map(({ zone, node, label }) => (
+          <button
+            className="alert-row offline"
+            key={`off-${zone.zone_id}-${node.node_id}`}
+            onClick={() => onOpenNode(zone.zone_id, node.node_id)}
+          >
+            <TriangleAlert size={20} />
+
+            <span>
+              <b>
+                {zone.name} · {label}
+              </b>
+
+              <small>
+                Offline
+                {node.timestamp
+                  ? ` · last report ${formatDateTime(node.timestamp)}`
+                  : ""}
+              </small>
+            </span>
+
+            <ChevronRight size={18} />
+          </button>
+        ))}
+
+        {(
           breaches.map((entry) => (
             <button
-              className="alert-row"
+              className={`alert-row${
+                getTemperatureStatus(
+                  entry.node.temp_c,
+                  entry.zone.limits
+                ) === "Below limit"
+                  ? " cold"
+                  : ""
+              }`}
               key={
                 entry.zone.zone_id +
                 entry.node.node_id

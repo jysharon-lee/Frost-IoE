@@ -294,6 +294,16 @@ class AlertEngineTests(unittest.TestCase):
         self.assertEqual(len(e2), 1)
         self.assertEqual(e2[0]["alert_type"], "zone_offline")
         self.assertEqual(e2[0]["state"], "RESOLVED")
+        self.assertNotIn("recovered", e2[0]["message"])  # no buffered rows, no tail
+
+    def test_back_online_message_counts_recovered_readings(self):
+        self.influx.live_stamps = {"N01": self.now - timedelta(seconds=240), "N02": self.now - timedelta(seconds=220)}
+        self.engine.evaluate_once(self.now)
+        t2 = self.now + timedelta(minutes=2)
+        self.influx.live_stamps = {"N01": t2, "N02": t2}
+        self.influx.raw_by_zone["Z1"] = [{"timestamp": self.now, "node_id": "N01", "temp_c": -19.0, "source": "BACKFILL"}] * 3
+        e2 = self.engine.evaluate_once(t2)
+        self.assertIn("3 readings logged on the board during the outage were recovered", e2[0]["message"])
 
     def test_forecast_requires_two_cycles_and_respects_toggle(self):
         # Warming +0.1 C/min -> ETA 5 min

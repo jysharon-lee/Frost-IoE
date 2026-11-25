@@ -32,10 +32,13 @@ export default function NodeCard({
     (status === "Above limit" ||
       status === "Below limit");
 
+  // Too cold is still outside limits, but shown blue instead of alarm red
   const statusClass = !recent
     ? "stale"
-    : outsideLimits
-      ? "breach"
+    : status === "Below limit"
+      ? "cold"
+      : outsideLimits
+        ? "breach"
       : status === "Within limits"
         ? "normal"
         : "unavailable";
@@ -45,7 +48,7 @@ export default function NodeCard({
       className={[
         "panel compact-node-card",
         statusClass,
-        outsideLimits ? "has-breach" : "",
+        statusClass === "breach" ? "has-breach" : "",
         isWorst ? "is-worst" : "",
         open ? "open" : "",
       ].join(" ")}

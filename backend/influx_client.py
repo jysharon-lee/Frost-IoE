@@ -170,7 +170,28 @@ class InfluxService:
           |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
           |> sort(columns: ["_time"])
         '''
-        return self._execute_trend_query(flux_query)
+        return self._mark_late(self._execute_trend_query(flux_query), zone_id, hours)
+
+    def _mark_late(self, points: List[TrendPoint], zone_id: str, hours: int,
+                   node_id: Optional[str] = None) -> List[TrendPoint]:
+        """Flag 5-min windows that hold buffered=true readings. Best effort: no flags if the query fails.
+        ponytail: the newest partial window can miss the flag (range end differs by ms), fine for old outages."""
+        node = f'|> filter(fn: (r) => r["node_id"] == {json.dumps(node_id)})' if node_id else ""
+        query = f'''from(bucket: {json.dumps(settings.INFLUX_BUCKET)})
+          |> range(start: -{int(hours)}h)
+          |> filter(fn: (r) => r["_measurement"] == "{MEASUREMENT}" and r["_field"] == "temp_c" and r["buffered"] == "true")
+          |> filter(fn: (r) => r["zone_id"] == {json.dumps(zone_id)})
+          {node}
+          |> group(columns: [])
+          |> aggregateWindow(every: 5m, fn: count, createEmpty: false)'''
+        try:
+            late = {r.get_time() for t in self.get_query_api().query(query, org=settings.clean_org)
+                    for r in t.records}
+        except Exception:
+            return points
+        for p in points:
+            p.uploaded_later = p.timestamp in late
+        return points
 
     def get_node_trend(self, zone_id: str, node_id: str, hours: int = 24) -> List[TrendPoint]:
         """Single node trend downsampled to 5-minute means."""
@@ -189,7 +210,7 @@ class InfluxService:
           |> pivot(rowKey: ["_time"], columnKey: ["_field"], valueColumn: "_value")
           |> sort(columns: ["_time"])
         '''
-        return self._execute_trend_query(flux_query)
+        return self._mark_late(self._execute_trend_query(flux_query), zone_id, hours, node_id)
 
     def _execute_trend_query(self, flux_query: str) -> List[TrendPoint]:
         query_api = self.get_query_api()
